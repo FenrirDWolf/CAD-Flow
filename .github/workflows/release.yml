@@ -25,7 +25,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: install dependencies
-        working-directory: ./desktop
+        working-directory: ./cadflow/desktop
         run: npm install
 
       - name: build and publish tauri
@@ -35,10 +35,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          projectPath: ./desktop
+          projectPath: ./cadflow/desktop
           tagName: app-v__VERSION__ 
           releaseName: 'CADFlow v__VERSION__'
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: true
           prerelease: false
           args: --updater-active
+
