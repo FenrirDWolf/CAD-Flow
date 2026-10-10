@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>CADFlow Interceptor</Name>
+    <Assembly>CADFlow.RevitPlugin.dll</Assembly>
+    <AddInId>A1B2C3D4-E5F6-4A5B-8C9D-E0F1A2B3C4D5</AddInId>
+    <FullClassName>CADFlow.RevitPlugin.SyncInterceptor</FullClassName>
+    <VendorId>TWLT</VendorId>
+    <VendorDescription>Twilight Group Inc.</VendorDescription>
+  </AddIn>
+</RevitAddIns>

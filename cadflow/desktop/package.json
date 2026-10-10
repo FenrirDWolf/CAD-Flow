@@ -1,0 +1,36 @@
+{
+  "name": "cadflow-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "vite",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "vite-build": "vite build",
+    "dev:all": "npx concurrently -c \"green,blue\" -n \"TAURI,API\" \"npm run dev\" \"cd ../backend && python -m uvicorn app.main:app --port 8000\""
+  },
+  "dependencies": {
+    "@clerk/clerk-react": "^5.61.10",
+    "@clerk/react": "^6.17.5",
+    "@clerk/themes": "^2.4.57",
+    "@supabase/supabase-js": "^2.45.0",
+    "@tauri-apps/api": "2.0.0",
+    "@tauri-apps/plugin-process": "^2.4.0",
+    "@tauri-apps/plugin-updater": "^2.13.2",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.51.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sonner": "^2.0.8",
+    "tailwind-merge": "^3.7.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@tauri-apps/cli": "2.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0"
+  }
+}

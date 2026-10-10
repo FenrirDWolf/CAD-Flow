@@ -1,0 +1,45 @@
+{
+  "productName": "CADFlow",
+  "version": "0.1.0",
+  "identifier": "com.cadflow.dev",
+  "build": {
+    "beforeDevCommand": "npm run start",
+    "beforeBuildCommand": "npm run vite-build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "CADFlow",
+        "width": 1200,
+        "height": 800
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/<YOUR_GITHUB_USERNAME>/<YOUR_REPO_NAME>/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU4NUFDRDJDQjJENUU0MzAKUldRdzVOV3lMTTFhV05xbktJaTVsd3VlSWZMVks0OWJPcFk1N3lhU2xGdVlBcDAxcXNMNDI4b2IK"
+    },
+    "core": {
+      "invoke": {
+        "allowlist": [
+          "get_cad_installations",
+          "mount_drive",
+          "unmount_drive",
+          "check_file_in_use",
+          "upload_file",
+          "acquire_lock",
+          "launch_file"
+        ]
+      }
+    }
+  }
+}
+

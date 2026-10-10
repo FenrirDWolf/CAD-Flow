@@ -1,0 +1,37 @@
+# Environments
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Rust / Tauri
+**/src-tauri/target/
+
+# Python
+**/venv/
+**/__pycache__/
+*.pyc
+*.db
+*.sqlite
+
+# IDEs and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+*.exe
+*.pdb
+
+
+edge_cache/
+
+
+**/dist/
+

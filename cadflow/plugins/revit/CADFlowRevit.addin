@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>CADFlow Enterprise Sync</Name>
+    <Assembly>CADFlowRevit.dll</Assembly>
+    <ClientId>1a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p</ClientId>
+    <FullClassName>CADFlowRevit.App</FullClassName>
+    <VendorId>CADFLOW</VendorId>
+    <VendorDescription>CADFlow Enterprise CDE</VendorDescription>
+  </AddIn>
+</RevitAddIns>
