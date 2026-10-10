@@ -39,6 +39,7 @@ jobs:
           tagName: app-v__VERSION__ 
           releaseName: 'CADFlow v__VERSION__'
           releaseBody: 'See the assets to download this version and install.'
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
+
 
