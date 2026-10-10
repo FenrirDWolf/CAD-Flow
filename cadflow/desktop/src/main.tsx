@@ -11,7 +11,7 @@ if (!container) {
   throw new Error('Root container missing in index.html');
 }
 
-const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_test_Zm9uZC1rb2RpYWstNTc3My5jbGVyay5hY2NvdW50cy5kZXYk";
 
 if (!PUBLISHABLE_KEY) {
   throw new Error("Missing Publishable Key")
@@ -42,3 +42,4 @@ root.render(
     </ClerkProvider>
   </React.StrictMode>
 );
+
