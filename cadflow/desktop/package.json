@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "start": "vite",
+    "start": "vite",`n    "tauri": "tauri",
     "dev": "tauri dev",
     "build": "tauri build",
     "vite-build": "vite build",
@@ -34,3 +34,4 @@
     "vite": "^6.0.0"
   }
 }
+
