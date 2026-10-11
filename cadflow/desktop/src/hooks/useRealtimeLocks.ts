@@ -32,7 +32,7 @@ export function useSharePointExplorer() {
   useEffect(() => {
     const fetchDrives = async () => {
       try {
-        const response = await fetch(`http://127.0.0.1:8080/api/v1/sharepoint/tree?user_id=${userId || ''}`, { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
+        const response = await fetch(`https://cadflow-api.onrender.com/api/v1/sharepoint/tree?user_id=${userId || ''}`, { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
         if (!response.ok) throw new Error('Failed to fetch tree');
         const data = await response.json();
         
@@ -67,7 +67,7 @@ export function useSharePointExplorer() {
     const fetchFolder = async () => {
       setIsLoading(true);
       try {
-        const response = await fetch(`http://127.0.0.1:8080/api/v1/sharepoint/folder/${currentDriveId}/${currentFolderId}`, { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
+        const response = await fetch(`https://cadflow-api.onrender.com/api/v1/sharepoint/folder/${currentDriveId}/${currentFolderId}`, { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
         if (!response.ok) throw new Error('Failed to fetch folder');
         const data = await response.json();
         
@@ -117,5 +117,6 @@ export function useSharePointExplorer() {
 
   return { drives, files, isLoading, currentDriveId, breadcrumbs, navigateToFolder, navigateUp, selectDrive, refresh };
 }
+
 
 

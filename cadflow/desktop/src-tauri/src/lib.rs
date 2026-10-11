@@ -90,7 +90,7 @@ async fn acquire_lock(item_id: String) -> Result<(), String> {
         "windows_username": username
     });
 
-    let res = client.post("http://127.0.0.1:8080/api/v1/locks/acquire")
+    let res = client.post("https://cadflow-api.onrender.com/api/v1/locks/acquire")
         .json(&payload)
         .send()
         .await
@@ -122,7 +122,7 @@ async fn release_lock(item_id: String, comment: String) -> Result<(), String> {
         "windows_username": username
     });
 
-    let res = client.post("http://127.0.0.1:8080/api/v1/locks/release")
+    let res = client.post("https://cadflow-api.onrender.com/api/v1/locks/release")
         .json(&payload)
         .send()
         .await
@@ -340,6 +340,7 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
 
 
 

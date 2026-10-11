@@ -262,7 +262,7 @@ export const App: React.FC = () => {
                   onApproveClick={async (file) => {
                     toast.loading(`Requesting approval for ${file.file_name}...`, { id: 'approve' });
                     try {
-                      const res = await fetch(`http://127.0.0.1:8080/api/v1/files/${file.sharepoint_item_id}/approve`, { method: 'POST' });
+                      const res = await fetch(`https://cadflow-api.onrender.com/api/v1/files/${file.sharepoint_item_id}/approve`, { method: 'POST' });
                       if (res.ok) {
                         toast.success(`${file.file_name} has been approved to SHARED state!`, { id: 'approve' });
                       } else {
@@ -300,6 +300,7 @@ export const App: React.FC = () => {
   );
 };
 export default App;
+
 
 
 

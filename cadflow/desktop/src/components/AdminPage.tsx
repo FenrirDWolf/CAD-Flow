@@ -25,7 +25,7 @@ export const AdminPage: React.FC = () => {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('http://127.0.0.1:8080/api/v1/admin/users', { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
+      const res = await fetch('https://cadflow-api.onrender.com/api/v1/admin/users', { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
       const data = await res.json();
       setUsers(data.users || []);
     } catch (e) {
@@ -35,7 +35,7 @@ export const AdminPage: React.FC = () => {
 
   const fetchLocks = async () => {
     try {
-      const res = await fetch('http://127.0.0.1:8080/api/v1/admin/locks', { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
+      const res = await fetch('https://cadflow-api.onrender.com/api/v1/admin/locks', { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
       const data = await res.json();
       setLocks(data.locks || []);
     } catch (e) {
@@ -45,11 +45,11 @@ export const AdminPage: React.FC = () => {
 
   const fetchDrivesAndStorage = async () => {
     try {
-      const driveRes = await fetch('http://127.0.0.1:8080/api/v1/sharepoint/tree', { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
+      const driveRes = await fetch('https://cadflow-api.onrender.com/api/v1/sharepoint/tree', { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
       const driveData = await driveRes.json();
       setDrives(driveData.tree || []);
       
-      const storageRes = await fetch('http://127.0.0.1:8080/api/v1/sharepoint/storage', { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
+      const storageRes = await fetch('https://cadflow-api.onrender.com/api/v1/sharepoint/storage', { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
       const storageData = await storageRes.json();
       setStorage(storageData);
     } catch (e) {
@@ -60,7 +60,7 @@ export const AdminPage: React.FC = () => {
   
   const fetchAuditLogs = async () => {
     try {
-      const res = await fetch('http://127.0.0.1:8080/api/v1/admin/audit-logs', { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
+      const res = await fetch('https://cadflow-api.onrender.com/api/v1/admin/audit-logs', { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
       if (res.ok) {
         const data = await res.json();
         setAuditLogs(data);
@@ -81,7 +81,7 @@ export const AdminPage: React.FC = () => {
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('http://127.0.0.1:8080/api/v1/admin/users', {
+      const res = await fetch('https://cadflow-api.onrender.com/api/v1/admin/users', {
       method: 'POST',
         headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123', 'Content-Type': 'application/json' },
         body: JSON.stringify(newUser)
@@ -106,7 +106,7 @@ export const AdminPage: React.FC = () => {
       return;
     }
     try {
-      const res = await fetch(`http://127.0.0.1:8080/api/v1/sharepoint/folder/${drive_id}/root`, { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
+      const res = await fetch(`https://cadflow-api.onrender.com/api/v1/sharepoint/folder/${drive_id}/root`, { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
       const data = await res.json();
       setFolders(data.children.filter((c: any) => c.is_folder));
     } catch(e) {
@@ -117,7 +117,7 @@ export const AdminPage: React.FC = () => {
   const handleGrantAccess = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('http://127.0.0.1:8080/api/v1/admin/access', {
+      const res = await fetch('https://cadflow-api.onrender.com/api/v1/admin/access', {
       method: 'POST',
         headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123', 'Content-Type': 'application/json' },
         body: JSON.stringify(newAccess)
@@ -136,7 +136,7 @@ export const AdminPage: React.FC = () => {
 
   const handleForceReleaseLock = async (itemId: string) => {
     try {
-      const res = await fetch(`http://127.0.0.1:8080/api/v1/admin/locks/${itemId}`, {
+      const res = await fetch(`https://cadflow-api.onrender.com/api/v1/admin/locks/${itemId}`, {
       method: 'DELETE',
         headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' }
       });
@@ -423,3 +423,4 @@ export const AdminPage: React.FC = () => {
 };
 
 export default AdminPage;
+
