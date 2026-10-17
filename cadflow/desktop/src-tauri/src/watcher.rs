@@ -99,21 +99,9 @@ pub fn start_cad_save_watcher(app_handle: AppHandle, cache_dir: PathBuf, on_save
                                                     file_path: path.to_string_lossy().into_owned(),
                                                 };
                                                 let _ = app_handle.emit("iso_validation_failed", payload);
-                                                continue;
                                             }
                                         }
                                     }
-                                    // Branch divergence logic
-                                    let local_hash = "mock_local_hash";
-                                    let remote_hash = "mock_remote_hash";
-                                    if local_hash != remote_hash {
-                                        let _ = app_handle.emit("branch_created", serde_json::json!({
-                                            "file": path.file_name().unwrap().to_string_lossy().into_owned(),
-                                            "branch_name": format!("{}_OfflineBranch_Alex", path.file_name().unwrap().to_string_lossy())
-                                        }));
-                                        continue; // Prevent overwrite
-                                    }
-
                                     on_save_callback(path);
                                 }
                             }

@@ -10,15 +10,18 @@ router = APIRouter(prefix="/api/v1/revit-lifecycle", tags=["Revit Server & Share
 logger = logging.getLogger(__name__)
 
 class PublishSnapshotRequest(BaseModel):
+    model_config = {"protected_namespaces": ()}
     model_name: str
     comment: Optional[str] = "Milestone Deliverable"
     destination_folder: Optional[str] = "03_Published Deliverables"
 
 class ArchiveProjectRequest(BaseModel):
+    model_config = {"protected_namespaces": ()}
     model_name: str
     reason: Optional[str] = "Project phase complete, archiving to SharePoint to reclaim server disk"
 
 class RestoreProjectRequest(BaseModel):
+    model_config = {"protected_namespaces": ()}
     model_name: str
     source_archive_path: Optional[str] = "04_Archive"
 

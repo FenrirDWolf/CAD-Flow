@@ -1,6 +1,4 @@
 use std::path::PathBuf;
-use std::fs::File;
-use std::io::Write;
 use reqwest::Client;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
@@ -38,10 +36,8 @@ pub async fn prefetch_project_files(files: Vec<(String, String)>) -> Result<(), 
                     if response.status().is_success() {
                         match response.bytes().await {
                             Ok(bytes) => {
-                                if let Ok(mut file) = File::create(&local_path) {
-                                    let _ = file.write_all(&bytes);
-                                    crate::debug_logger::debug_log(&format!("Prefetch finished: {}", file_name));
-                                }
+                                let _ = crate::windows_utils::safe_atomic_write(&local_path, &bytes);
+                                crate::debug_logger::debug_log(&format!("Prefetch finished: {}", file_name));
                             }
                             Err(e) => crate::debug_logger::debug_log(&format!("Prefetch bytes err for {}: {}", file_name, e)),
                         }

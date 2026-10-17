@@ -24,9 +24,9 @@ namespace CADFlowRevit
             if (megabytes > 3) // Hard limit: 3MB per family
             {
                 TaskDialog.Show("CADFlow Content Quarantine", 
-                    $"The family '{Path.GetFileName(familyPath)}' is {megabytes}MB. \n\n" +
+                    string.Format("The family '{0}' is {1}MB. \n\n" +
                     "This exceeds the firm's 3MB standard and will bloat the Central Model. " +
-                    "Please request the BIM Manager to simplify the geometry before loading.");
+                    "Please request the BIM Manager to simplify the geometry before loading.", Path.GetFileName(familyPath), megabytes));
                 
                 // Block the family from loading natively
                 e.Cancel();

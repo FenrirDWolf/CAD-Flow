@@ -8,13 +8,13 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
-NEON_DB_URL = os.getenv("NEON_DB_URL")
-if "sslmode=require" in NEON_DB_URL:
+NEON_DB_URL = os.getenv("NEON_DB_URL", "sqlite+aiosqlite:///cadflow.db")
+if NEON_DB_URL and "sslmode=require" in NEON_DB_URL:
     NEON_DB_URL = NEON_DB_URL.replace("sslmode=require", "ssl=require")
-if "channel_binding=require" in NEON_DB_URL:
+if NEON_DB_URL and "channel_binding=require" in NEON_DB_URL:
     NEON_DB_URL = NEON_DB_URL.replace("&channel_binding=require", "")
 
-engine = create_async_engine(NEON_DB_URL, echo=True)
+engine = create_async_engine(NEON_DB_URL, echo=False)
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 Base = declarative_base()
 
@@ -44,11 +44,12 @@ class FolderAccess(Base):
 class FileLock(Base):
     __tablename__ = "file_locks"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    sharepoint_item_id = Column(String)
+    sharepoint_item_id = Column(String, unique=True, index=True, nullable=False)
     file_name = Column(String)
     locked_by = Column(String, ForeignKey("users.clerk_id"))
     locked_by_user = Column(String)
-    locked_at = Column(DateTime)
+    locked_at = Column(DateTime, default=datetime.utcnow)
+    last_heartbeat = Column(DateTime, default=datetime.utcnow)
     machine_hostname = Column(String)
 
 class AuditAction(enum.Enum):

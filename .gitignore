@@ -35,3 +35,7 @@ edge_cache/
 
 **/dist/
 
+# .NET / C#
+**/bin/
+**/obj/
+

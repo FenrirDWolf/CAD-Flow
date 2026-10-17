@@ -1,9 +1,13 @@
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 from models import AsyncSessionLocal, User, FolderAccess, FileLock
-from schemas import LockAcquireRequest, LockReleaseRequest, LockStatusResponse
+from schemas import (
+    LockAcquireRequest, LockReleaseRequest, LockStatusResponse, LockHeartbeatRequest,
+    CreateFolderRequest, RenameItemRequest, DeleteItemRequest, CreateUploadSessionRequest
+)
 
 # Dependency to get DB session
 async def get_db():
@@ -36,6 +40,10 @@ app.add_middleware(
 @app.get("/")
 def read_root():
     return {"status": "CADFlow Backend is running."}
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "service": "CADFlow Backend"}
 
 @app.get("/api/v1/sharepoint/drives")
 async def get_sharepoint_drives():
@@ -275,9 +283,12 @@ async def get_sharepoint_folder(drive_id: str, item_id: str, db: AsyncSession = 
                 
             children_data = resp.json().get("value", [])
             
-            # Fetch all active locks from DB
-            result = await db.execute(select(FileLock))
-            active_locks = {lock.sharepoint_item_id: lock for lock in result.scalars().all()}
+            # Fetch active locks only for files in this folder (prevents O(N) full-table scans)
+            child_ids = [item["id"] for item in children_data]
+            active_locks = {}
+            if child_ids:
+                result = await db.execute(select(FileLock).where(FileLock.sharepoint_item_id.in_(child_ids)))
+                active_locks = {lock.sharepoint_item_id: lock for lock in result.scalars().all()}
             
             formatted_children = []
             for item in children_data:
@@ -306,18 +317,6 @@ async def get_sharepoint_folder(drive_id: str, item_id: str, db: AsyncSession = 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from datetime import datetime
-from models import AsyncSessionLocal, User, FolderAccess, FileLock
-from schemas import LockAcquireRequest, LockReleaseRequest, LockStatusResponse
-
-# Dependency to get DB session
-async def get_db():
-    async with AsyncSessionLocal() as session:
-        yield session
-
 @app.post("/api/v1/locks/acquire")
 async def acquire_lock(request: LockAcquireRequest, db: AsyncSession = Depends(get_db), api_key: str = Depends(verify_api_key)):
     result = await db.execute(select(FileLock).where(FileLock.sharepoint_item_id == request.sharepoint_item_id))
@@ -325,7 +324,9 @@ async def acquire_lock(request: LockAcquireRequest, db: AsyncSession = Depends(g
     
     if existing_lock:
         if existing_lock.machine_hostname != request.machine_hostname:
-            raise HTTPException(status_code=409, detail="File is currently locked by another user.")
+            raise HTTPException(status_code=409, detail=f"File is currently locked by {existing_lock.locked_by_user or 'another user'}.")
+        existing_lock.last_heartbeat = datetime.utcnow()
+        await db.commit()
         return {"status": "ok", "message": "Lock already held by you."}
         
     new_lock = FileLock(
@@ -334,11 +335,27 @@ async def acquire_lock(request: LockAcquireRequest, db: AsyncSession = Depends(g
         locked_by=None,
         locked_by_user=request.windows_username or "SYSTEM",
         locked_at=datetime.utcnow(),
+        last_heartbeat=datetime.utcnow(),
         machine_hostname=request.machine_hostname
     )
     db.add(new_lock)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="File is currently locked by another concurrent session.")
+        
     return {"status": "ok", "message": "Lock acquired."}
+
+@app.post("/api/v1/locks/heartbeat")
+async def heartbeat_lock(request: LockHeartbeatRequest, db: AsyncSession = Depends(get_db), api_key: str = Depends(verify_api_key)):
+    result = await db.execute(select(FileLock).where(FileLock.sharepoint_item_id == request.sharepoint_item_id))
+    existing_lock = result.scalar_one_or_none()
+    if not existing_lock:
+        raise HTTPException(status_code=404, detail="Lock not found or has expired.")
+    existing_lock.last_heartbeat = datetime.utcnow()
+    await db.commit()
+    return {"status": "ok", "message": "Lock heartbeat updated."}
 
 @app.post("/api/v1/locks/release")
 async def release_lock(request: LockReleaseRequest, db: AsyncSession = Depends(get_db), api_key: str = Depends(verify_api_key)):
@@ -346,10 +363,22 @@ async def release_lock(request: LockReleaseRequest, db: AsyncSession = Depends(g
     existing_lock = result.scalar_one_or_none()
     
     if existing_lock:
+        if request.windows_username and existing_lock.locked_by_user:
+            if request.windows_username != existing_lock.locked_by_user and request.machine_hostname != existing_lock.machine_hostname and request.windows_username != "SYSTEM":
+                raise HTTPException(status_code=403, detail=f"Unauthorized: Lock is held by {existing_lock.locked_by_user}.")
         await db.delete(existing_lock)
         await db.commit()
         
     return {"status": "ok", "message": "Lock released."}
+
+@app.post("/api/v1/locks/break")
+async def break_lock(request: LockHeartbeatRequest, db: AsyncSession = Depends(get_db), api_key: str = Depends(verify_api_key)):
+    result = await db.execute(select(FileLock).where(FileLock.sharepoint_item_id == request.sharepoint_item_id))
+    existing_lock = result.scalar_one_or_none()
+    if existing_lock:
+        await db.delete(existing_lock)
+        await db.commit()
+    return {"status": "ok", "message": "Lock forcefully broken."}
 
 @app.get("/api/v1/locks/status/{item_id}", response_model=LockStatusResponse)
 async def get_lock_status(item_id: str, db: AsyncSession = Depends(get_db), api_key: str = Depends(verify_api_key)):
@@ -426,8 +455,72 @@ async def sync_ghost_locks(db: AsyncSession = Depends(get_db)):
     # Mocking checking SharePoint for native locks and updating file_locks table
     return {"status": "success", "message": "Ghost locks synced"}
 
+# SharePoint Folder & File Mutation Routes
+@app.post("/api/v1/sharepoint/folder/create")
+async def create_sharepoint_folder(req: CreateFolderRequest, api_key: str = Depends(verify_api_key)):
+    try:
+        master_token = get_master_graph_token()
+        headers = {"Authorization": f"Bearer {master_token}", "Content-Type": "application/json"}
+        url = f"https://graph.microsoft.com/v1.0/drives/{req.drive_id}/items/{req.parent_item_id}/children"
+        payload = {"name": req.folder_name, "folder": {}, "@microsoft.graph.conflictBehavior": "rename"}
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code not in (200, 201):
+                raise HTTPException(status_code=resp.status_code, detail=resp.text)
+            return resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/api/v1/sharepoint/item/rename")
+async def rename_sharepoint_item(req: RenameItemRequest, api_key: str = Depends(verify_api_key)):
+    try:
+        master_token = get_master_graph_token()
+        headers = {"Authorization": f"Bearer {master_token}", "Content-Type": "application/json"}
+        url = f"https://graph.microsoft.com/v1.0/drives/{req.drive_id}/items/{req.item_id}"
+        payload = {"name": req.new_name}
+        async with httpx.AsyncClient() as client:
+            resp = await client.patch(url, headers=headers, json=payload)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=resp.status_code, detail=resp.text)
+            return resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/v1/sharepoint/item/delete/{drive_id}/{item_id}")
+async def delete_sharepoint_item(drive_id: str, item_id: str, api_key: str = Depends(verify_api_key)):
+    try:
+        master_token = get_master_graph_token()
+        headers = {"Authorization": f"Bearer {master_token}"}
+        url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}"
+        async with httpx.AsyncClient() as client:
+            resp = await client.delete(url, headers=headers)
+            if resp.status_code not in (200, 204):
+                raise HTTPException(status_code=resp.status_code, detail=resp.text)
+            return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v1/sharepoint/upload-session")
+async def create_sharepoint_upload_session(req: CreateUploadSessionRequest, api_key: str = Depends(verify_api_key)):
+    try:
+        master_token = get_master_graph_token()
+        headers = {"Authorization": f"Bearer {master_token}", "Content-Type": "application/json"}
+        parent = req.parent_item_id or "root"
+        url = f"https://graph.microsoft.com/v1.0/drives/{req.drive_id}/items/{parent}:/{req.file_name}:/createUploadSession"
+        payload = {"item": {"@microsoft.graph.conflictBehavior": "replace"}}
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code not in (200, 201):
+                raise HTTPException(status_code=resp.status_code, detail=resp.text)
+            return resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 from admin_routes import router as admin_router
 app.include_router(admin_router)
+
+from revit_lifecycle import router as revit_lifecycle_router
+app.include_router(revit_lifecycle_router)
 
 if __name__ == "__main__":
     import uvicorn

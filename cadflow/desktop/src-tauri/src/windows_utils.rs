@@ -117,10 +117,11 @@ pub fn reveal_in_explorer(path: &str) -> Result<(), String> {
                 return Ok(());
             }
         }
+        let fallback_root = format!("{}:\\", crate::drive::get_mounted_drive_letter());
         Command::new("explorer.exe")
-            .arg("X:\\")
+            .arg(&fallback_root)
             .spawn()
-            .map_err(|e| format!("Failed to open X:\\ drive: {}", e))?;
+            .map_err(|e| format!("Failed to open {} drive: {}", fallback_root, e))?;
     }
     Ok(())
 }
@@ -128,7 +129,8 @@ pub fn reveal_in_explorer(path: &str) -> Result<(), String> {
 /// Opens a folder in native Windows File Explorer
 pub fn open_folder_in_explorer(path: &str) -> Result<(), String> {
     use std::process::Command;
-    let target = if std::path::Path::new(path).exists() { path } else { "X:\\" };
+    let fallback = format!("{}:\\", crate::drive::get_mounted_drive_letter());
+    let target = if std::path::Path::new(path).exists() { path } else { &fallback };
     Command::new("explorer.exe")
         .arg(target)
         .spawn()

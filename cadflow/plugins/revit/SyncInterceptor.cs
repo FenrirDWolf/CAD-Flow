@@ -5,13 +5,14 @@ using Autodesk.Revit.DB.Events;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
-using System.Text.Json;
 
-namespace CADFlow.Revit
+namespace CADFlow.RevitPlugin
 {
     public class SyncInterceptor : IExternalApplication
     {
         private static readonly HttpClient client = new HttpClient();
+        private static readonly string backendBaseUrl = Environment.GetEnvironmentVariable("CADFLOW_API_URL") ?? "https://cadflow-api.onrender.com";
+        private static string lastOpenedFilePath = "";
         
         public SyncInterceptor()
         {
@@ -22,6 +23,8 @@ namespace CADFlow.Revit
         {
             application.ControlledApplication.DocumentOpening += OnDocumentOpening;
             application.ControlledApplication.DocumentSaved += OnDocumentSaved;
+            application.ControlledApplication.DocumentClosed += OnDocumentClosed;
+            application.ControlledApplication.DocumentSynchronizingWithCentral += OnDocumentSynchronizing;
             return Result.Succeeded;
         }
 
@@ -29,7 +32,24 @@ namespace CADFlow.Revit
         {
             application.ControlledApplication.DocumentOpening -= OnDocumentOpening;
             application.ControlledApplication.DocumentSaved -= OnDocumentSaved;
+            application.ControlledApplication.DocumentClosed -= OnDocumentClosed;
+            application.ControlledApplication.DocumentSynchronizingWithCentral -= OnDocumentSynchronizing;
             return Result.Succeeded;
+        }
+
+        public static void OnDocumentSynchronizing(object sender, DocumentSynchronizingWithCentralEventArgs e)
+        {
+            string path = e.Document != null ? e.Document.PathName : "";
+            if (!string.IsNullOrEmpty(path))
+            {
+                Task.Run(() => new SyncInterceptor().LogAuditAction(path, "sync", "Revit Interceptor synchronized with Central.")).Wait();
+            }
+        }
+
+        private static string GetDeterministicItemId(string filePath)
+        {
+            string fileName = System.IO.Path.GetFileName(filePath) ?? "revit_generic";
+            return "rvt_" + Math.Abs(fileName.ToLowerInvariant().GetHashCode()).ToString();
         }
 
         private void OnDocumentOpening(object sender, DocumentOpeningEventArgs e)
@@ -37,6 +57,7 @@ namespace CADFlow.Revit
             string filePath = e.PathName;
             if (filePath.Contains("X:\\") || filePath.Contains("CADFlow"))
             {
+                lastOpenedFilePath = filePath;
                 bool locked = Task.Run(() => AcquireLock(filePath)).GetAwaiter().GetResult();
                 if (!locked)
                 {
@@ -59,14 +80,49 @@ namespace CADFlow.Revit
             }
         }
 
+        private void OnDocumentClosed(object sender, DocumentClosedEventArgs e)
+        {
+            if (!string.IsNullOrEmpty(lastOpenedFilePath))
+            {
+                string path = lastOpenedFilePath;
+                lastOpenedFilePath = "";
+                Task.Run(() => ReleaseLock(path)).Wait();
+                Task.Run(() => LogAuditAction(path, "unlock", "Revit Interceptor released lock on file close.")).Wait();
+            }
+        }
+
+        private static string Escape(string s)
+        {
+            if (s == null) return "";
+            return s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r");
+        }
+
         private async Task<bool> AcquireLock(string filePath)
         {
             try
             {
-                var payload = new { file_path = filePath, sharepoint_item_id = "revit_file_intercept", machine_hostname = Environment.MachineName, windows_username = Environment.UserName };
-                string json = JsonSerializer.Serialize(payload);
+                string itemId = GetDeterministicItemId(filePath);
+                string json = string.Format("{{\"file_path\":\"{0}\",\"sharepoint_item_id\":\"{1}\",\"file_type\":\"rvt\",\"machine_hostname\":\"{2}\",\"windows_username\":\"{3}\"}}",
+                    Escape(filePath), Escape(itemId), Escape(Environment.MachineName), Escape(Environment.UserName));
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var response = await client.PostAsync("http://127.0.0.1:8080/api/v1/locks/acquire", content).ConfigureAwait(false);
+                var response = await client.PostAsync(string.Format("{0}/api/v1/locks/acquire", backendBaseUrl), content).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private async Task<bool> ReleaseLock(string filePath)
+        {
+            try
+            {
+                string itemId = GetDeterministicItemId(filePath);
+                string json = string.Format("{{\"sharepoint_item_id\":\"{0}\",\"machine_hostname\":\"{1}\",\"windows_username\":\"{2}\",\"comment\":\"Revit document closed\"}}",
+                    Escape(itemId), Escape(Environment.MachineName), Escape(Environment.UserName));
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var response = await client.PostAsync(string.Format("{0}/api/v1/locks/release", backendBaseUrl), content).ConfigureAwait(false);
                 return response.IsSuccessStatusCode;
             }
             catch
@@ -80,10 +136,11 @@ namespace CADFlow.Revit
             try
             {
                 string fileName = System.IO.Path.GetFileName(filePath);
-                var payload = new { sharepoint_item_id = $"{fileName}_id", file_name = fileName, clerk_id = "revit_interceptor", action = action, details = details };
-                string json = JsonSerializer.Serialize(payload);
+                string itemId = GetDeterministicItemId(filePath);
+                string json = string.Format("{{\"sharepoint_item_id\":\"{0}\",\"file_name\":\"{1}\",\"clerk_id\":\"{2}\",\"action\":\"{3}\",\"details\":\"{4}\"}}",
+                    Escape(itemId), Escape(fileName), Escape(Environment.UserName), Escape(action), Escape(details));
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
-                await client.PostAsync("http://127.0.0.1:8080/api/v1/audit/log", content).ConfigureAwait(false);
+                await client.PostAsync(string.Format("{0}/api/v1/audit/log", backendBaseUrl), content).ConfigureAwait(false);
             }
             catch { }
         }

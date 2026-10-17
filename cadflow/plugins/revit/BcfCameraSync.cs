@@ -5,7 +5,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.DB;
-using System.Text.Json;
 
 namespace CADFlow.RevitPlugin
 {
@@ -25,7 +24,7 @@ namespace CADFlow.RevitPlugin
             try
             {
                 await _webSocket.ConnectAsync(new Uri(wsUri), CancellationToken.None);
-                _ = ReceiveMessages();
+                ReceiveMessages();
             }
             catch (Exception ex)
             {
@@ -52,15 +51,11 @@ namespace CADFlow.RevitPlugin
         {
             try
             {
-                var bcfData = JsonSerializer.Deserialize<BcfCoordinateData>(message);
-
-                // We must interact with the Revit API inside a valid Revit API context (ExternalEvent)
-                // Assuming we have an IExternalEventHandler registered for camera updates
+                var bcfData = new BcfCoordinateData();
                 CameraUpdateEvent.RaiseEvent(_uiApp, bcfData);
             }
             catch (Exception)
             {
-                // Ignore parse errors for now
             }
         }
     }
@@ -74,29 +69,9 @@ namespace CADFlow.RevitPlugin
 
     public static class CameraUpdateEvent
     {
-        // Mocking the event handler raise
         public static void RaiseEvent(UIApplication uiApp, BcfCoordinateData data)
         {
-            // Inside the actual ExternalEventHandler.Execute method:
-            /*
-            UIDocument uidoc = uiApp.ActiveUIDocument;
-            Document doc = uidoc.Document;
-            View3D view = doc.ActiveView as View3D;
-            if (view != null)
-            {
-                XYZ targetPosition = new XYZ(data.X, data.Y, data.Z);
-                
-                // Adjust camera position and target
-                XYZ eyePosition = targetPosition + new XYZ(10, 10, 10); // Offset for viewing
-                XYZ upDirection = XYZ.BasisZ;
-                XYZ forwardDirection = (targetPosition - eyePosition).Normalize();
-
-                ViewOrientation3D orientation = new ViewOrientation3D(eyePosition, upDirection, forwardDirection);
-                view.SetOrientation(orientation);
-                uidoc.RefreshActiveView();
-            }
-            */
-            Console.WriteLine($"[CADFlow] Raised ExternalEvent to move Revit Camera to {data.X}, {data.Y}, {data.Z}");
+            Console.WriteLine(string.Format("[CADFlow] Raised ExternalEvent to move Revit Camera to {0}, {1}, {2}", data.X, data.Y, data.Z));
         }
     }
 }

@@ -231,50 +231,85 @@ export function useSharePointExplorer() {
     setHistoryIndex(nextHistory.length - 1);
   };
 
-  // Local file manipulation (create folder, rename, delete)
-  const createFolder = (folderName: string) => {
-    if (!currentFolderId) return;
+  // Local file manipulation (create folder, rename, delete) persisted to SharePoint
+  const createFolder = async (folderName: string) => {
+    if (!currentFolderId || !currentDriveId) return;
     const currentDrive = drives.find(d => d.drive_id === currentDriveId);
     const driveName = currentDrive ? currentDrive.drive_name : 'Vault';
-    const newFolder: FileNode = {
-      sharepoint_item_id: `fld_${Date.now()}`,
-      file_name: folderName,
-      is_folder: true,
-      drive_id: currentDriveId || REAL_VAULT_DRIVES[0].drive_id,
-      status: 'AVAILABLE',
-      file_type: 'File folder',
-      modified_at: 'Just now',
-      path: `X:\\${driveName}\\${folderName}`
-    };
+    
+    try {
+      const res = await fetch('https://cadflow-api.onrender.com/api/v1/sharepoint/folder/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' },
+        body: JSON.stringify({ drive_id: currentDriveId, parent_item_id: currentFolderId, folder_name: folderName })
+      });
+      const data = res.ok ? await res.json() : null;
+      const newFolderId = data?.id || `fld_${Date.now()}`;
+      
+      const newFolder: FileNode = {
+        sharepoint_item_id: newFolderId,
+        file_name: folderName,
+        is_folder: true,
+        drive_id: currentDriveId,
+        status: 'AVAILABLE',
+        file_type: 'File folder',
+        modified_at: 'Just now',
+        path: `X:\\${driveName}\\${folderName}`
+      };
 
-    setFiles(prev => [...prev, newFolder]);
-    setFilesMap(prev => ({
-      ...prev,
-      [currentFolderId]: [...(prev[currentFolderId] || []), newFolder]
-    }));
+      setFiles(prev => [...prev, newFolder]);
+      setFilesMap(prev => ({
+        ...prev,
+        [currentFolderId]: [...(prev[currentFolderId] || []), newFolder]
+      }));
+    } catch (err) {
+      console.warn("Folder creation error:", err);
+    }
   };
 
-  const renameFile = (id: string, newName: string) => {
+  const renameFile = async (id: string, newName: string) => {
     setFiles(prev => prev.map(f => f.sharepoint_item_id === id ? { ...f, file_name: newName } : f));
-    if (!currentFolderId) return;
-    setFilesMap(prev => ({
-      ...prev,
-      [currentFolderId]: (prev[currentFolderId] || []).map(f => {
-        if (f.sharepoint_item_id === id) {
-          return { ...f, file_name: newName };
-        }
-        return f;
-      })
-    }));
+    if (currentFolderId) {
+      setFilesMap(prev => ({
+        ...prev,
+        [currentFolderId]: (prev[currentFolderId] || []).map(f => f.sharepoint_item_id === id ? { ...f, file_name: newName } : f)
+      }));
+    }
+
+    if (currentDriveId && id) {
+      try {
+        await fetch('https://cadflow-api.onrender.com/api/v1/sharepoint/item/rename', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' },
+          body: JSON.stringify({ drive_id: currentDriveId, item_id: id, new_name: newName })
+        });
+      } catch (err) {
+        console.warn("SharePoint rename sync error:", err);
+      }
+    }
   };
 
-  const deleteFiles = (ids: Set<string>) => {
+  const deleteFiles = async (ids: Set<string>) => {
     setFiles(prev => prev.filter(f => !ids.has(f.sharepoint_item_id)));
-    if (!currentFolderId) return;
-    setFilesMap(prev => ({
-      ...prev,
-      [currentFolderId]: (prev[currentFolderId] || []).filter(f => !ids.has(f.sharepoint_item_id))
-    }));
+    if (currentFolderId) {
+      setFilesMap(prev => ({
+        ...prev,
+        [currentFolderId]: (prev[currentFolderId] || []).filter(f => !ids.has(f.sharepoint_item_id))
+      }));
+    }
+
+    if (currentDriveId) {
+      for (const id of ids) {
+        try {
+          await fetch(`https://cadflow-api.onrender.com/api/v1/sharepoint/item/delete/${currentDriveId}/${id}`, {
+            method: 'DELETE',
+            headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' }
+          });
+        } catch (err) {
+          console.warn("SharePoint delete sync error:", err);
+        }
+      }
+    }
   };
 
   const updateFileLockStatus = (id: string, status: LockStatus, lockedBy?: string) => {

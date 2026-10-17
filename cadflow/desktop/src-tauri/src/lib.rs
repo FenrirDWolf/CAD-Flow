@@ -76,19 +76,24 @@ async fn break_remote_lock(item_id: String, reason: Option<String>) -> Result<()
         headers.insert("X-CADFlow-API-Key", reqwest::header::HeaderValue::from_static("dev-cadflow-secret-key-123"));
         headers
     }).build().unwrap();
-    let payload = json!({
-        "sharepoint_item_id": item_id,
-        "reason": reason.unwrap_or_else(|| "BIM Manager override: Abandoned/Stale lock".to_string())
-    });
+    // Try DELETE /api/v1/admin/locks/{id} first, fallback to POST /api/v1/locks/break
+    let delete_url = format!("https://cadflow-api.onrender.com/api/v1/admin/locks/{}", item_id);
+    let res = client.delete(&delete_url).send().await;
 
-    let res = client.post("https://cadflow-api.onrender.com/api/v1/locks/break")
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|e| format!("Network error: {}", e))?;
+    let success = match res {
+        Ok(r) if r.status().is_success() => true,
+        _ => {
+            let fallback_url = "https://cadflow-api.onrender.com/api/v1/locks/break";
+            let payload = json!({
+                "sharepoint_item_id": item_id,
+                "reason": reason.unwrap_or_else(|| "BIM Manager override: Abandoned/Stale lock".to_string())
+            });
+            client.post(fallback_url).json(&payload).send().await.map(|r| r.status().is_success()).unwrap_or(false)
+        }
+    };
 
-    if !res.status().is_success() {
-        return Err(format!("Failed to break lock: {}", res.status()));
+    if !success {
+        return Err("Failed to break lock: server rejected request".to_string());
     }
 
     Ok(())
@@ -335,33 +340,44 @@ async fn sync_and_launch(file_name: String, download_url: String, read_only: Opt
     let local_file_path = project_dir.join(safe_name);
     crate::debug_logger::debug_log(&format!("Local path: {:?}", local_file_path));
     
-    // Download or prepare file with zero-corruption atomic write
-    if !local_file_path.exists() {
+    // Stream download without buffering 2GB into RAM, using atomic swap
+    if !local_file_path.exists() || (local_file_path.metadata().map(|m| m.len() < 100).unwrap_or(true) && !download_url.is_empty()) {
         if !download_url.is_empty() {
-            match reqwest::get(&download_url).await {
-                Ok(response) if response.status().is_success() => {
-                    if let Ok(bytes) = response.bytes().await {
-                        let _ = crate::windows_utils::safe_atomic_write(&local_file_path, &bytes);
+            if let Ok(mut response) = reqwest::get(&download_url).await {
+                if response.status().is_success() {
+                    let temp_path = local_file_path.with_extension("tmp_download");
+                    let mut stream_ok = false;
+                    if let Ok(mut tmp_file) = tokio::fs::File::create(&temp_path).await {
+                        use tokio::io::AsyncWriteExt;
+                        let mut failed = false;
+                        while let Ok(Some(chunk)) = response.chunk().await {
+                            if let Err(_) = tmp_file.write_all(&chunk).await {
+                                failed = true;
+                                break;
+                            }
+                        }
+                        if !failed {
+                            let _ = tmp_file.flush().await;
+                            stream_ok = true;
+                        }
                     }
-                },
-                _ => {
-                    // Safe CAD/BIM binary header stub if download url is mock/offline
-                    let stub_data = if safe_name.ends_with(".dwg") {
-                        b"AC1032\0CADFlow Valid AutoCAD File Stub\0".to_vec()
-                    } else {
-                        b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1CADFlow Valid Revit OLE Storage Stub".to_vec()
-                    };
-                    let _ = crate::windows_utils::safe_atomic_write(&local_file_path, &stub_data);
+                    if stream_ok {
+                        let _ = std::fs::rename(&temp_path, &local_file_path);
+                    } else if temp_path.exists() {
+                        let _ = std::fs::remove_file(&temp_path);
+                    }
                 }
             }
-        } else {
-            let stub_data = if safe_name.ends_with(".dwg") {
-                b"AC1032\0CADFlow Valid AutoCAD File Stub\0".to_vec()
-            } else {
-                b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1CADFlow Valid Revit OLE Storage Stub".to_vec()
-            };
-            let _ = crate::windows_utils::safe_atomic_write(&local_file_path, &stub_data);
         }
+    }
+
+    if !local_file_path.exists() {
+        let stub_data = if safe_name.ends_with(".dwg") {
+            b"AC1032\0CADFlow Valid AutoCAD File Stub\0".to_vec()
+        } else {
+            b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1CADFlow Valid Revit OLE Storage Stub".to_vec()
+        };
+        let _ = crate::windows_utils::safe_atomic_write(&local_file_path, &stub_data);
     }
 
     // Apply Read-Only protection attribute to prevent accidental overwrite or corruption

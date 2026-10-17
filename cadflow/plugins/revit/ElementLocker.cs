@@ -33,7 +33,7 @@ namespace CADFlowRevit
                 
                 if (!canEdit)
                 {
-                    TaskDialog.Show("CADFlow", $"Element {id.IntegerValue} is currently locked by another user.");
+                    TaskDialog.Show("CADFlow", string.Format("Element {0} is currently locked by another user.", id.IntegerValue));
                     // Throwing exception cancels the transaction in Revit natively
                     throw new Exception("Element locked by another user."); 
                 }
@@ -45,7 +45,7 @@ namespace CADFlowRevit
             try
             {
                 // Fire-and-forget fast lock request to local CADFlow Desktop Agent
-                var payload = new StringContent($"{{\"file\":\"{documentName}\", \"element_id\":{elementId}}}", Encoding.UTF8, "application/json");
+                var payload = new StringContent(string.Format("{{\"file\":\"{0}\", \"element_id\":{1}}}", documentName, elementId), Encoding.UTF8, "application/json");
                 // Using synchronous Wait for demonstration, in production use async or pre-fetch locks
                 var response = client.PostAsync("http://localhost:1420/api/local/elements/lock", payload).Result;
                 return response.IsSuccessStatusCode;

@@ -75,10 +75,10 @@ export const AdminPage: React.FC = () => {
       if (res.ok) {
         toast.success(`Published detached snapshot of ${modelName} to SharePoint 03_Published Deliverables!`, { id: "snapshot", duration: 7000 });
       } else {
-        toast.success(`Detached snapshot published to SharePoint (Verified).`, { id: "snapshot", duration: 7000 });
+        toast.error(`Failed to publish snapshot (Server returned HTTP ${res.status})`, { id: "snapshot", duration: 7000 });
       }
-    } catch (e) {
-      toast.success(`Detached snapshot of ${modelName} published to SharePoint 03_Published Deliverables!`, { id: "snapshot", duration: 7000 });
+    } catch (e: any) {
+      toast.error(`Snapshot publishing failed: ${e?.message || e}`, { id: "snapshot", duration: 7000 });
     } finally {
       setIsPublishing(false);
     }

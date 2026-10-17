@@ -12,12 +12,38 @@ class LockAcquireRequest(BaseModel):
 class LockReleaseRequest(BaseModel):
     sharepoint_item_id: str
     comment: Optional[str] = None
+    machine_hostname: Optional[str] = None
+    windows_username: Optional[str] = None
+
+class LockHeartbeatRequest(BaseModel):
+    sharepoint_item_id: str
+    machine_hostname: Optional[str] = None
+    windows_username: Optional[str] = None
 
 class LockStatusResponse(BaseModel):
     sharepoint_item_id: str
     locked_by: Optional[str]
     locked_at: Optional[datetime]
     machine_hostname: Optional[str]
+
+class CreateFolderRequest(BaseModel):
+    drive_id: str
+    parent_item_id: str
+    folder_name: str
+
+class RenameItemRequest(BaseModel):
+    drive_id: str
+    item_id: str
+    new_name: str
+
+class DeleteItemRequest(BaseModel):
+    drive_id: str
+    item_id: str
+
+class CreateUploadSessionRequest(BaseModel):
+    drive_id: str
+    parent_item_id: Optional[str] = "root"
+    file_name: str
 
 class UserCreate(BaseModel):
     clerk_id: str

@@ -19,7 +19,7 @@ namespace CADFlowRevit
             try
             {
                 // Fetch the latest metadata from CADFlow FastAPI
-                var response = client.GetStringAsync($"http://localhost:1420/api/local/metadata?file={doc.PathName}").Result;
+                var response = client.GetStringAsync(string.Format("http://localhost:1420/api/local/metadata?file={0}", doc.PathName)).Result;
                 // e.g. {"Revision": "P02", "Status": "S2", "Description": "Issued for Coordination"}
                 
                 using (Transaction t = new Transaction(doc, "CADFlow Parameter Sync"))
@@ -39,7 +39,7 @@ namespace CADFlowRevit
                     t.Commit();
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 // Non-fatal, just log it
             }

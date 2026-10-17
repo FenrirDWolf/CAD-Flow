@@ -5,28 +5,33 @@ from msal import ConfidentialClientApplication
 # This allows us to access all 4TB of the Dummy Accounts' storage in the background,
 # without requiring the architects to log in with a Microsoft account.
 
+_msal_app = None
+
+def get_msal_app():
+    global _msal_app
+    if _msal_app is None:
+        client_id = os.environ.get("ENTRA_CLIENT_ID")
+        client_secret = os.environ.get("ENTRA_CLIENT_SECRET")
+        tenant_id = os.environ.get("ENTRA_TENANT_ID")
+        authority = f"https://login.microsoftonline.com/{tenant_id}"
+        _msal_app = ConfidentialClientApplication(
+            client_id,
+            authority=authority,
+            client_credential=client_secret
+        )
+    return _msal_app
+
 def get_master_graph_token() -> str:
     """
     Acquires an app-only access token for Microsoft Graph using the Client Secret.
-    This grants backend-level access to read/write across the entire SharePoint 
-    tenant (including all dummy accounts) to manage CAD chunks.
+    Uses MSAL singleton cache to avoid exhausting Microsoft Entra ID token quotas.
     """
-    client_id = os.environ.get("ENTRA_CLIENT_ID")
-    client_secret = os.environ.get("ENTRA_CLIENT_SECRET")
-    tenant_id = os.environ.get("ENTRA_TENANT_ID")
-    
-    authority = f"https://login.microsoftonline.com/{tenant_id}"
-    
-    app = ConfidentialClientApplication(
-        client_id,
-        authority=authority,
-        client_credential=client_secret
-    )
-    
-    # Notice we use .default scope for Application Permissions
+    app = get_msal_app()
     scopes = ["https://graph.microsoft.com/.default"]
     
-    result = app.acquire_token_for_client(scopes=scopes)
+    result = app.acquire_token_silent(scopes=scopes, account=None)
+    if not result:
+        result = app.acquire_token_for_client(scopes=scopes)
     
     if "access_token" in result:
         return result["access_token"]

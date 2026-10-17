@@ -7,8 +7,24 @@ param(
 )
 
 $ProjectsRoot = "C:\ProgramData\Autodesk\Revit Server 2025\Projects"
-$RevitToolExe = "C:\Program Files\Autodesk\Revit Server 2025\Tools\RevitServerToolCommand\RevitServerTool.exe"
 $StagingDir = "C:\CADFlow_Admin\Staging"
+$BackendUrl = if ($env:CADFLOW_API_URL) { $env:CADFLOW_API_URL } else { "https://cadflow-api.onrender.com" }
+
+function Find-RevitServerTool {
+    if ($env:REVIT_SERVER_TOOL -and (Test-Path $env:REVIT_SERVER_TOOL)) {
+        return $env:REVIT_SERVER_TOOL
+    }
+    $candidates = @("2026", "2025", "2024", "2023", "2022", "2021")
+    foreach ($ver in $candidates) {
+        $p = "C:\Program Files\Autodesk\Revit Server $ver\Tools\RevitServerToolCommand\RevitServerTool.exe"
+        if (Test-Path $p) { return $p }
+        $p2 = "C:\Program Files\Autodesk\Revit $ver\RevitServerToolCommand\RevitServerTool.exe"
+        if (Test-Path $p2) { return $p2 }
+    }
+    return $null
+}
+
+$RevitToolExe = Find-RevitServerTool
 
 if (!(Test-Path $StagingDir)) {
     New-Item -ItemType Directory -Path $StagingDir -Force | Out-Null
@@ -16,6 +32,13 @@ if (!(Test-Path $StagingDir)) {
 
 switch ($Action) {
     "status" {
+        if (!(Test-Path $ProjectsRoot)) {
+            try {
+                $remoteStatus = Invoke-RestMethod -Uri "$BackendUrl/api/v1/revit-lifecycle/status" -Method Get -TimeoutSec 10
+                Write-Output ($remoteStatus | ConvertTo-Json -Depth 4)
+                exit 0
+            } catch {}
+        }
         $disk = Get-PSDrive C | Select-Object @{Name="FreeGB"; Expression={[math]::Round($_.Free / 1GB, 2)}}, @{Name="UsedGB"; Expression={[math]::Round($_.Used / 1GB, 2)}}
         $models = @()
         if (Test-Path $ProjectsRoot) {
@@ -50,13 +73,28 @@ switch ($Action) {
         $outFileName = "$($baseName)_Snapshot_$timestamp.rvt"
         $outPath = Join-Path $StagingDir $outFileName
         
-        Write-Output "Generating detached local model snapshot using RevitServerTool.exe..."
-        try {
-            & $RevitToolExe createLocalRVT $ModelName -server "212.86.105.232" -destination $outPath -overwrite 2>&1 | Out-Null
-        } catch {}
-        
-        if (!(Test-Path $outPath)) {
-            Set-Content -Path $outPath -Value "CADFlow Verified Revit Server 2025 Snapshot - $ModelName"
+        if ($RevitToolExe) {
+            Write-Output "Generating detached local model snapshot using $RevitToolExe..."
+            try {
+                $cmdOutput = & $RevitToolExe createLocalRVT $ModelName -server "212.86.105.232" -destination $outPath -overwrite 2>&1
+                if ($LASTEXITCODE -ne 0 -or !(Test-Path $outPath)) {
+                    throw "RevitServerTool failed with exit code ${LASTEXITCODE}: $cmdOutput"
+                }
+            } catch {
+                Write-Error "Failed to create detached snapshot for $ModelName : $_"
+                exit 1
+            }
+        } else {
+            Write-Output "RevitServerTool.exe not found locally. Delegating snapshot request to CADFlow Server ($BackendUrl)..."
+            try {
+                $body = @{ model_name = $ModelName; comment = $Comment } | ConvertTo-Json
+                $remoteRes = Invoke-RestMethod -Uri "$BackendUrl/api/v1/revit-lifecycle/publish-snapshot" -Method Post -Body $body -ContentType "application/json" -TimeoutSec 30
+                Write-Output ($remoteRes | ConvertTo-Json)
+                exit 0
+            } catch {
+                Write-Error "Revit Server Tools not installed locally (checked 2021-2026) and CADFlow server could not be reached: $_"
+                exit 1
+            }
         }
         
         $item = Get-Item $outPath
