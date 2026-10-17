@@ -62,6 +62,7 @@ export interface FileTableProps {
   onRename?: (f: FileNode) => void;
   onDelete?: (files: FileNode[]) => void;
   onToggleLock?: (f: FileNode) => void;
+  driveLetter?: string;
 }
 
 export const FileTable: React.FC<FileTableProps> = ({ 
@@ -78,7 +79,8 @@ export const FileTable: React.FC<FileTableProps> = ({
   onPropertiesClick,
   onRename,
   onDelete,
-  onToggleLock
+  onToggleLock,
+  driveLetter = 'X'
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
@@ -213,7 +215,7 @@ export const FileTable: React.FC<FileTableProps> = ({
   };
 
   const handleCopyPath = async (file: FileNode) => {
-    const fullPath = file.path || `X:\\Project\\${file.file_name}`;
+    const fullPath = file.path || `${driveLetter}:\\Project\\${file.file_name}`;
     await navigator.clipboard.writeText(fullPath);
     toast.success(`Copied path to clipboard: ${fullPath}`);
   };
@@ -283,7 +285,7 @@ export const FileTable: React.FC<FileTableProps> = ({
         <div className="absolute inset-0 bg-primary/15 border-2 border-dashed border-primary z-50 flex items-center justify-center backdrop-blur-xs rounded-md pointer-events-none">
           <div className="flex flex-col items-center space-y-2 bg-background/90 p-6 rounded-lg shadow-xl border">
             <FolderOpen size={40} className="text-primary animate-bounce" />
-            <p className="text-base font-semibold text-foreground">Drop files here to upload to X:\ Drive</p>
+            <p className="text-base font-semibold text-foreground">Drop files here to upload to {driveLetter}:\ Drive</p>
             <p className="text-xs text-muted-foreground">Files will be synchronized with zero-corruption guarantee</p>
           </div>
         </div>
@@ -682,6 +684,28 @@ export const FileTable: React.FC<FileTableProps> = ({
           >
             <Trash2 size={14} /> Delete <span className="ml-auto text-[10px] text-muted-foreground">Del</span>
           </button>
+
+          {/* Lock / Unlock / Break Lock Action */}
+          {!contextMenu.file.is_folder && onToggleLock && (
+            <button 
+              className={`flex items-center gap-2.5 px-3 py-1.5 text-left ${contextMenu.file.status === 'LOCKED' ? 'hover:bg-amber-500/10 text-amber-600' : 'hover:bg-muted'}`}
+              onClick={() => {
+                const targetFile = contextMenu.file;
+                setContextMenu(null);
+                onToggleLock(targetFile);
+              }}
+            >
+              {contextMenu.file.status === 'LOCKED' ? (
+                <>
+                  <Unlock size={14} /> {contextMenu.file.locked_by === 'You' ? 'Release Lock' : 'Break Lock (BIM Manager)'}
+                </>
+              ) : (
+                <>
+                  <Lock size={14} /> Lock for Exclusive Editing
+                </>
+              )}
+            </button>
+          )}
 
           <div className="h-px bg-border my-1" />
 

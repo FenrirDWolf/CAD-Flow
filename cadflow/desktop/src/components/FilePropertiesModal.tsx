@@ -8,9 +8,10 @@ interface FilePropertiesModalProps {
   isOpen: boolean;
   file: FileNode | null;
   onClose: () => void;
+  driveLetter?: string;
 }
 
-export const FilePropertiesModal: React.FC<FilePropertiesModalProps> = ({ isOpen, file, onClose }) => {
+export const FilePropertiesModal: React.FC<FilePropertiesModalProps> = ({ isOpen, file, onClose, driveLetter = 'X' }) => {
   const [activeTab, setActiveTab] = useState<'general' | 'security'>('general');
   const [isReadOnly, setIsReadOnly] = useState(false);
   const [sha256, setSha256] = useState<string>('Computing hash...');
@@ -153,7 +154,7 @@ export const FilePropertiesModal: React.FC<FilePropertiesModalProps> = ({ isOpen
                 <div className="grid grid-cols-3 gap-2">
                   <span className="text-muted-foreground">Location:</span>
                   <span className="col-span-2 font-mono text-[11px] break-all select-all">
-                    {file.path || `X:\\Project\\${file.file_name}`}
+                    {file.path || `${driveLetter}:\\Project\\${file.file_name}`}
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
@@ -242,7 +243,7 @@ export const FilePropertiesModal: React.FC<FilePropertiesModalProps> = ({ isOpen
                 <div className="grid grid-cols-3 gap-2 pt-1">
                   <span className="text-muted-foreground">XREF Safety:</span>
                   <span className="col-span-2 text-xs">
-                    Mounted on <span className="font-semibold">X:\</span> drive. All external references resolve identically on all team machines.
+                    Mounted on <span className="font-semibold">{driveLetter}:\</span> drive. All external references resolve identically on all team machines.
                   </span>
                 </div>
               </div>

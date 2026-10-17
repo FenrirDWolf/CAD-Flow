@@ -1,73 +1,167 @@
-use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::Duration;
+use std::path::PathBuf;
+use std::sync::Mutex;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use serde::{Deserialize, Serialize};
+use once_cell::sync::Lazy;
+use tauri::{AppHandle, Emitter};
 
-/// Local Chunk Queuing System
-/// If SharePoint crashes or throttles, we save chunks to D:\CADFlow_Cache
-/// and drip-feed them in the background so the user never sees a "Loading" screen.
+static QUEUE_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
-pub struct QueueManager {
-    queue: Arc<Mutex<VecDeque<ChunkUploadJob>>>,
-}
-
-#[derive(Clone)]
-pub struct ChunkUploadJob {
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct PendingSyncJob {
+    pub id: String,
+    pub sharepoint_item_id: String,
     pub file_name: String,
-    pub chunk_hash: String,
-    pub payload: Vec<u8>,
+    pub file_path: String,
+    pub queued_at: u64,
+    pub attempts: u32,
+    pub last_error: Option<String>,
 }
 
-impl QueueManager {
-    pub fn new() -> Self {
-        Self {
-            queue: Arc::new(Mutex::new(VecDeque::new())),
-        }
+fn get_queue_file_path() -> PathBuf {
+    PathBuf::from("C:\\Users\\Public\\CADFlow_Cache\\pending_sync_queue.json")
+}
+
+/// Reads the persistent pending upload queue from disk
+pub fn load_queue_from_disk() -> Vec<PendingSyncJob> {
+    let _lock = QUEUE_MUTEX.lock().unwrap();
+    let path = get_queue_file_path();
+    if !path.exists() {
+        return Vec::new();
     }
 
-    /// Enqueue a chunk. Called by the CDC Chunk Engine when Revit saves a file.
-    pub fn enqueue(&self, job: ChunkUploadJob) {
-        let mut q = self.queue.lock().unwrap();
-        q.push_back(job);
-        println!("📦 Chunk {} queued for background upload.", q.len());
+    match std::fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Saves the pending upload queue to disk (atomically)
+pub fn save_queue_to_disk(jobs: &[PendingSyncJob]) -> Result<(), String> {
+    let _lock = QUEUE_MUTEX.lock().unwrap();
+    let path = get_queue_file_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
     }
 
-    /// Spawns a background thread that continuously tries to upload chunks
-    pub fn start_background_worker(&self) {
-        let queue_clone = Arc::clone(&self.queue);
-        
-        thread::spawn(move || {
-            loop {
-                let job_opt = {
-                    let mut q = queue_clone.lock().unwrap();
-                    q.pop_front()
+    let json_bytes = serde_json::to_vec_pretty(jobs).map_err(|e| e.to_string())?;
+    crate::windows_utils::safe_atomic_write(&path, &json_bytes)
+}
+
+/// Enqueues an unsynced file closure operation when offline
+pub fn enqueue_offline_sync(item_id: String, file_name: String, file_path: String) -> Result<PendingSyncJob, String> {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+    let job = PendingSyncJob {
+        id: format!("job_{}_{}", now, item_id),
+        sharepoint_item_id: item_id,
+        file_name,
+        file_path,
+        queued_at: now,
+        attempts: 0,
+        last_error: None,
+    };
+
+    let mut jobs = load_queue_from_disk();
+    // Avoid duplicate enqueues for the same item
+    jobs.retain(|j| j.sharepoint_item_id != job.sharepoint_item_id);
+    jobs.push(job.clone());
+    save_queue_to_disk(&jobs)?;
+
+    crate::debug_logger::debug_log(&format!("Enqueued offline sync job for: {}", job.file_name));
+    Ok(job)
+}
+
+/// Removes a completed job from the queue
+pub fn remove_job_from_queue(job_id: &str) -> Result<(), String> {
+    let mut jobs = load_queue_from_disk();
+    jobs.retain(|j| j.id != job_id);
+    save_queue_to_disk(&jobs)
+}
+
+/// Background worker that drains the offline queue as soon as internet connectivity returns
+pub fn start_offline_queue_worker(app_handle: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(15)).await;
+
+            let jobs = load_queue_from_disk();
+            if jobs.is_empty() {
+                continue;
+            }
+
+            crate::debug_logger::debug_log(&format!("Offline queue worker checking {} pending jobs...", jobs.len()));
+
+            // Test network reachability
+            let client = reqwest::Client::builder()
+                .timeout(Duration::from_secs(4))
+                .build();
+            
+            let client = match client {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            let is_online = client.get("https://cadflow-api.onrender.com/health")
+                .send()
+                .await
+                .map(|r| r.status().is_success())
+                .unwrap_or(false);
+
+            if !is_online {
+                crate::debug_logger::debug_log("Network still unreachable. Backing off...");
+                continue;
+            }
+
+            crate::debug_logger::debug_log("Network restored! Draining offline dirty queue...");
+
+            for mut job in jobs {
+                let file_path = PathBuf::from(&job.file_path);
+                if !file_path.exists() {
+                    // File no longer exists, prune job
+                    let _ = remove_job_from_queue(&job.id);
+                    continue;
+                }
+
+                // 1. Push Delta to Edge Node / Cloud
+                let edge_url = "http://127.0.0.1:8000/relay/upload_delta";
+                let _upload_res = crate::delta_uploader::upload_delta_to_edge(file_path.clone(), edge_url).await;
+                
+                // 2. Release Remote Lock
+                let release_payload = serde_json::json!({
+                    "sharepoint_item_id": job.sharepoint_item_id,
+                    "comment": "Auto-synced via offline dirty queue recovery"
+                });
+
+                let lock_res = client.post("https://cadflow-api.onrender.com/api/v1/locks/release")
+                    .header("X-CADFlow-API-Key", "dev-cadflow-secret-key-123")
+                    .json(&release_payload)
+                    .send()
+                    .await;
+
+                let success = match lock_res {
+                    Ok(resp) => resp.status().is_success() || resp.status() == reqwest::StatusCode::NOT_FOUND,
+                    Err(_) => false,
                 };
 
-                if let Some(job) = job_opt {
-                    println!("🚀 Drip-feeding chunk {} to FastAPI...", job.chunk_hash);
+                if success {
+                    crate::debug_logger::debug_log(&format!("Successfully synced and unlocked offline file: {}", job.file_name));
+                    let _ = remove_job_from_queue(&job.id);
                     
-                    // In a real app, this makes an HTTP POST to FastAPI /upload_chunk
-                    let success = mock_upload_to_fastapi(&job);
-                    
-                    if !success {
-                        println!("⚠️ FastAPI rejected chunk. Re-queuing...");
-                        // Re-queue on failure
-                        let mut q = queue_clone.lock().unwrap();
-                        q.push_front(job);
-                        
-                        // Wait before retrying (Exponential backoff handled at API level, but we back off here too)
-                        thread::sleep(Duration::from_secs(5));
-                    }
+                    // Notify UI that a file was recovered
+                    let _ = app_handle.emit("offline_sync_recovered", serde_json::json!({
+                        "file_name": job.file_name,
+                        "sharepoint_item_id": job.sharepoint_item_id
+                    }));
                 } else {
-                    // Queue empty, wait a bit
-                    thread::sleep(Duration::from_millis(500));
+                    job.attempts += 1;
+                    job.last_error = Some("Failed to reach lock release service".to_string());
+                    let mut current_jobs = load_queue_from_disk();
+                    if let Some(pos) = current_jobs.iter().position(|j| j.id == job.id) {
+                        current_jobs[pos] = job;
+                        let _ = save_queue_to_disk(&current_jobs);
+                    }
                 }
             }
-        });
-    }
-}
-
-fn mock_upload_to_fastapi(_job: &ChunkUploadJob) -> bool {
-    // Simulate a successful upload
-    true
+        }
+    });
 }

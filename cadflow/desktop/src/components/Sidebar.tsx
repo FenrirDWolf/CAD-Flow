@@ -31,6 +31,7 @@ export interface SidebarProps {
   currentDriveId?: string | null;
   onSelectDrive?: (id: string, name: string, rootItemId: string) => void;
   onSelectQuickFolder?: (folderName: string) => void;
+  driveLetter?: string;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ 
@@ -41,7 +42,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   drives = [],
   currentDriveId,
   onSelectDrive,
-  onSelectQuickFolder
+  onSelectQuickFolder,
+  driveLetter = 'X'
 }) => {
   const [revitServerStatus, setRevitServerStatus] = useState<{ online: boolean; host: string; machine_name?: string } | null>(null);
   const [isVaultsExpanded, setIsVaultsExpanded] = useState(true);
@@ -114,7 +116,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               isCollapsed && "items-center justify-center",
               activeView === 'files' ? "bg-muted/80 text-foreground" : "text-muted-foreground"
             )}
-            title="CADFlow Virtual Drive (X:) - Mounted NTFS Cache"
+            title={`CADFlow Virtual Drive (${driveLetter}:) - Mounted NTFS Cache`}
           >
             <div className="flex items-center w-full space-x-2.5">
               <div className="relative">
@@ -124,7 +126,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {!isCollapsed && (
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-foreground truncate">CADFlow (X:)</span>
+                    <span className="text-xs font-medium text-foreground truncate">CADFlow ({driveLetter}:)</span>
                     <span className="text-[9px] px-1 rounded bg-emerald-500/10 text-emerald-600 font-semibold">Mounted</span>
                   </div>
                   <div className="text-[10px] text-muted-foreground mt-0.5 truncate">418 GB free of 512 GB</div>

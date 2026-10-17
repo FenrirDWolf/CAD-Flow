@@ -213,6 +213,31 @@ async def release_lock(
     #     "checked_in_by_name": user["name"],
     #     "handover_comment": req.comment,
     #     "sha256_hash": req.sha256_hash
-    # }).execute()
-    
     return {"message": "Lock released and file checked in successfully"}
+
+
+class LockBreakRequest(BaseModel):
+    sharepoint_item_id: str
+    reason: Optional[str] = "BIM Manager override: Abandoned/Stale lock"
+
+
+@router.post("/break")
+async def break_lock(
+    req: LockBreakRequest,
+    db=Depends(get_db_client),
+    user=Depends(get_current_user)
+):
+    """
+    Administrative Break Lock endpoint for BIM Managers.
+    Forces release of an abandoned, orphaned, or stale lock.
+    """
+    logger.info(f"Lock broken for item {req.sharepoint_item_id} by {user.get('email')} - Reason: {req.reason}")
+    # In real Supabase integration:
+    # db.table('file_locks').delete().eq("sharepoint_item_id", req.sharepoint_item_id).execute()
+    return {
+        "status": "success",
+        "message": f"Lock broken successfully for item {req.sharepoint_item_id}",
+        "broken_by": user.get("email"),
+        "reason": req.reason,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }

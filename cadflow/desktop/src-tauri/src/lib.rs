@@ -15,6 +15,7 @@ mod dependency_graph;
 mod windows_utils;
 mod delta_uploader;
 mod prefetcher;
+mod queue_manager;
 
 use tauri::{State, Emitter};
 use std::path::PathBuf;
@@ -39,17 +40,57 @@ async fn get_cad_installations() -> Result<detector::CadInstallations, String> {
 }
 
 #[tauri::command]
-async fn mount_drive(state: State<'_, MountState>, path: String) -> Result<(), String> {
+async fn mount_drive(state: State<'_, MountState>, path: String) -> Result<String, String> {
     let target = PathBuf::from(&path);
     if !target.exists() {
         return Err(format!("Cache path does not exist: {}", path));
     }
     
-    drive::mount_virtual_drive(&target)?;
+    let letter = drive::mount_virtual_drive(&target)?;
     
     let mut current_mount = state.mounted_path.lock().unwrap();
     *current_mount = Some(target);
     
+    Ok(letter)
+}
+
+#[tauri::command]
+async fn get_mounted_drive_letter() -> Result<String, String> {
+    Ok(drive::get_mounted_drive_letter())
+}
+
+#[tauri::command]
+async fn get_revit_compatibility() -> Result<detector::RevitCompatibilityReport, String> {
+    Ok(detector::check_revit_compatibility())
+}
+
+#[tauri::command]
+async fn get_pending_offline_syncs() -> Result<Vec<queue_manager::PendingSyncJob>, String> {
+    Ok(queue_manager::load_queue_from_disk())
+}
+
+#[tauri::command]
+async fn break_remote_lock(item_id: String, reason: Option<String>) -> Result<(), String> {
+    let client = Client::builder().default_headers({
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("X-CADFlow-API-Key", reqwest::header::HeaderValue::from_static("dev-cadflow-secret-key-123"));
+        headers
+    }).build().unwrap();
+    let payload = json!({
+        "sharepoint_item_id": item_id,
+        "reason": reason.unwrap_or_else(|| "BIM Manager override: Abandoned/Stale lock".to_string())
+    });
+
+    let res = client.post("https://cadflow-api.onrender.com/api/v1/locks/break")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if !res.status().is_success() {
+        return Err(format!("Failed to break lock: {}", res.status()));
+    }
+
     Ok(())
 }
 
@@ -138,7 +179,7 @@ async fn release_lock(item_id: String, comment: String) -> Result<(), String> {
 #[tauri::command]
 async fn watch_file_closure(item_id: String, file_name: String, file_path: String, app: tauri::AppHandle) -> Result<(), String> {
     tauri::async_runtime::spawn(async move {
-        let path = std::path::PathBuf::from(file_path);
+        let path = std::path::PathBuf::from(&file_path);
         crate::debug_logger::debug_log(&format!("Watching for file closure: {:?}", path));
         
         // Phase 1: Wait for CAD program to actually lock the file (give it up to 60 seconds to boot)
@@ -156,9 +197,29 @@ async fn watch_file_closure(item_id: String, file_name: String, file_path: Strin
             crate::debug_logger::debug_log("Warning: File was never locked by CAD within 60 seconds.");
         }
         
-        // Phase 2: Wait for CAD program to release the file
+        // Phase 2: Wait for CAD program to release the file, sending periodic heartbeats (Failure Mode C)
+        let mut heartbeat_ticker = 0u64;
+        let client = Client::builder().default_headers({
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert("X-CADFlow-API-Key", reqwest::header::HeaderValue::from_static("dev-cadflow-secret-key-123"));
+            headers
+        }).build().unwrap();
+
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            heartbeat_ticker += 2;
+
+            // Send heartbeat every 60 seconds while CAD is actively holding the file
+            if heartbeat_ticker >= 60 {
+                heartbeat_ticker = 0;
+                let hb_payload = json!({ "sharepoint_item_id": item_id.clone() });
+                let _ = client.post("https://cadflow-api.onrender.com/api/v1/locks/heartbeat")
+                    .json(&hb_payload)
+                    .send()
+                    .await;
+                crate::debug_logger::debug_log(&format!("Sent lock heartbeat for item: {}", item_id));
+            }
+
             if !crate::watcher::is_cad_file_in_use(&path) {
                 crate::debug_logger::debug_log("File has been UNLOCKED by CAD. Emitting cad_file_closed event.");
                 let _ = app.emit("cad_file_closed", FileClosedPayload {
@@ -166,12 +227,44 @@ async fn watch_file_closure(item_id: String, file_name: String, file_path: Strin
                     file_name: file_name.clone(),
                 });
 
-                // [NEW] Automatically push binary delta to Edge Node in real-time!
+                // Real-time delta upload to edge node
                 crate::debug_logger::debug_log("Auto-triggering Delta Upload to Edge Node...");
                 let edge_url = "http://127.0.0.1:8000/relay/upload_delta";
                 match crate::delta_uploader::upload_delta_to_edge(path.clone(), edge_url).await {
                     Ok(_) => crate::debug_logger::debug_log("Real-time Delta Sync successful."),
                     Err(e) => crate::debug_logger::debug_log(&format!("Delta Sync failed: {}", e)),
+                }
+
+                // Attempt to release remote lock. If offline or network fails, enqueue into persistent dirty queue (Failure Mode B)
+                let username = std::env::var("USERNAME").unwrap_or_else(|_| "Unknown".to_string());
+                let release_payload = json!({
+                    "sharepoint_item_id": item_id.clone(),
+                    "file_path": "mock",
+                    "file_type": "dwg",
+                    "machine_hostname": "local",
+                    "windows_username": username
+                });
+                let release_res = client.post("https://cadflow-api.onrender.com/api/v1/locks/release")
+                    .json(&release_payload)
+                    .send()
+                    .await;
+
+                let released = match release_res {
+                    Ok(resp) => resp.status().is_success() || resp.status() == reqwest::StatusCode::NOT_FOUND,
+                    Err(_) => false,
+                };
+
+                if !released {
+                    crate::debug_logger::debug_log("Network or release failed on close! Enqueueing into persistent dirty queue for auto-recovery.");
+                    let _ = crate::queue_manager::enqueue_offline_sync(
+                        item_id.clone(),
+                        file_name.clone(),
+                        file_path.clone()
+                    );
+                    let _ = app.emit("offline_sync_queued", json!({
+                        "file_name": file_name,
+                        "sharepoint_item_id": item_id
+                    }));
                 }
                 break;
             }
@@ -198,7 +291,13 @@ async fn launch_file(file_path: String) -> Result<(), String> {
 
 fn is_path_safe_in_vault(path: &std::path::Path) -> bool {
     let path_str = path.to_string_lossy().to_uppercase();
-    path_str.starts_with("X:\\") || path_str.starts_with("C:\\USERS\\PUBLIC\\CADFLOW_CACHE")
+    path_str.starts_with("C:\\USERS\\PUBLIC\\CADFLOW_CACHE")
+        || path_str.starts_with("X:\\")
+        || path_str.starts_with("Y:\\")
+        || path_str.starts_with("Z:\\")
+        || path_str.starts_with("V:\\")
+        || path_str.starts_with("W:\\")
+        || path_str.starts_with("U:\\")
 }
 
 #[tauri::command]
@@ -225,7 +324,7 @@ async fn sync_and_launch(file_name: String, download_url: String, read_only: Opt
     }
     
     crate::debug_logger::debug_log("Mounting virtual drive");
-    let _ = crate::drive::mount_virtual_drive(&cache_dir);
+    let mounted_letter = crate::drive::mount_virtual_drive(&cache_dir).unwrap_or_else(|_| "X".to_string());
     
     let project_dir = cache_dir.join("Project");
     if !project_dir.exists() {
@@ -269,8 +368,8 @@ async fn sync_and_launch(file_name: String, download_url: String, read_only: Opt
     let is_ro = read_only.unwrap_or(false);
     let _ = crate::windows_utils::set_file_readonly(&local_file_path.to_string_lossy(), is_ro);
 
-    let virtual_path = format!("X:\\Project\\{}", safe_name);
-    crate::debug_logger::debug_log(&format!("Launching via explorer: {}", virtual_path));
+    let virtual_path = format!("{}:\\Project\\{}", mounted_letter, safe_name);
+    crate::debug_logger::debug_log(&format!("Launching via explorer on {}:\\ : {}", mounted_letter, virtual_path));
     
     let _ = Command::new("explorer.exe").arg(&virtual_path)
         .spawn()
@@ -438,7 +537,14 @@ pub fn run() {
         }
     });
 
-    tauri::Builder::default().plugin(tauri_plugin_updater::Builder::new().build()).plugin(tauri_plugin_process::init())
+    tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
+        .setup(|app| {
+            let handle = app.handle().clone();
+            crate::queue_manager::start_offline_queue_worker(handle);
+            Ok(())
+        })
         .manage(MountState {
             mounted_path: Mutex::new(None),
         })
@@ -446,6 +552,10 @@ pub fn run() {
             get_cad_installations,
             mount_drive,
             unmount_drive,
+            get_mounted_drive_letter,
+            get_revit_compatibility,
+            get_pending_offline_syncs,
+            break_remote_lock,
             check_file_in_use,
             upload_file,
             acquire_lock,

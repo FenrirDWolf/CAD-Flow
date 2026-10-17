@@ -119,8 +119,25 @@ export const App: React.FC = () => {
     checkForUpdates();
   }, []);
 
+  const [driveLetter, setDriveLetter] = useState<string>('X');
+
+  // Query Dynamic Mounted Drive Letter (Failure Mode A)
+  useEffect(() => {
+    const fetchDriveLetter = async () => {
+      try {
+        const letter = await invoke<string>('get_mounted_drive_letter');
+        if (letter) {
+          setDriveLetter(letter);
+        }
+      } catch (e) {
+        console.warn("Could not fetch mounted drive letter:", e);
+      }
+    };
+    fetchDriveLetter();
+  }, []);
+
   // Compute Current Virtual Path
-  const currentPathString = `X:\\${breadcrumbs.map(b => b.name).join('\\')}`;
+  const currentPathString = `${driveLetter}:\\${breadcrumbs.map(b => b.name).join('\\')}`;
 
   // Online / Offline & CAD File Closure Listeners
   useEffect(() => {
@@ -136,10 +153,13 @@ export const App: React.FC = () => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    let unlisten: () => void;
+    let unlistenClosed: () => void;
+    let unlistenQueued: () => void;
+    let unlistenRecovered: () => void;
+
     const setupListener = async () => {
       try {
-        unlisten = await listen<{ sharepoint_item_id: string, file_name: string }>(
+        unlistenClosed = await listen<{ sharepoint_item_id: string, file_name: string }>(
           'cad_file_closed',
           async (event) => {
             toast.loading(`Auto-syncing changes for ${event.payload.file_name}...`, { id: "auto_sync" });
@@ -156,6 +176,24 @@ export const App: React.FC = () => {
             }
           }
         );
+
+        // Failure Mode B: Offline Dirty Queue Enqueued Listener
+        unlistenQueued = await listen<{ sharepoint_item_id: string, file_name: string }>(
+          'offline_sync_queued',
+          (event) => {
+            toast.warning(`Network offline: ${event.payload.file_name} saved locally on ${driveLetter}:\\ and queued for auto-sync on reconnect.`, { id: "offline_queue", duration: 8000 });
+          }
+        );
+
+        // Failure Mode B: Offline Dirty Queue Automatic Recovery Listener
+        unlistenRecovered = await listen<{ sharepoint_item_id: string, file_name: string }>(
+          'offline_sync_recovered',
+          (event) => {
+            toast.success(`Network restored: ${event.payload.file_name} successfully synced to SharePoint and remote lock released!`, { id: "offline_recovered", duration: 8000 });
+            updateFileLockStatus(event.payload.sharepoint_item_id, 'AVAILABLE');
+            refresh();
+          }
+        );
       } catch (e) {
         console.warn("Tauri listen failed:", e);
       }
@@ -163,11 +201,13 @@ export const App: React.FC = () => {
     setupListener();
 
     return () => { 
-      if (unlisten) unlisten(); 
+      if (unlistenClosed) unlistenClosed(); 
+      if (unlistenQueued) unlistenQueued(); 
+      if (unlistenRecovered) unlistenRecovered(); 
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [refresh, updateFileLockStatus]);
+  }, [refresh, updateFileLockStatus, driveLetter]);
 
   // File Upload Handler
   const handleFileUpload = (fileList: FileList) => {
@@ -176,7 +216,7 @@ export const App: React.FC = () => {
       toast.promise(
         new Promise(resolve => setTimeout(resolve, 1500)),
         {
-          loading: `Syncing ${fileNames} to X:\\ Drive (Atomic safe write)...`,
+          loading: `Syncing ${fileNames} to ${driveLetter}:\\ Drive (Atomic safe write)...`,
           success: `Successfully synced ${fileNames}!`,
           error: 'Upload failed.'
         }
@@ -187,6 +227,23 @@ export const App: React.FC = () => {
   // Safe Launch with Zero Corruption & Read-Only Fallback
   const handleLaunchFile = async (file: FileNode, forceReadOnly = false) => {
     try {
+      // Failure Mode D: Revit Model Version Incompatibility Pre-flight Check
+      if (file.file_name.toLowerCase().endsWith('.rvt')) {
+        try {
+          const compat = await invoke<{
+            installed_versions: Array<{ year: number; is_server_compatible: boolean }>;
+            has_revit_2025: boolean;
+            warning: string | null;
+          }>('get_revit_compatibility');
+
+          if (!compat.has_revit_2025 && compat.warning) {
+            toast.error(compat.warning, { duration: 9000 });
+          }
+        } catch (e) {
+          console.warn("Revit compatibility check error:", e);
+        }
+      }
+
       const isRo = forceReadOnly || isOffline || (file.status === 'LOCKED' && file.locked_by !== 'You');
       
       if (isRo) {
@@ -219,14 +276,23 @@ export const App: React.FC = () => {
     }
   };
 
-  // Toggle Lock
+  // Toggle Lock or Administrative Break Lock (Failure Mode C)
   const handleToggleLock = async (file: FileNode) => {
-    if (file.status === 'LOCKED') {
+    if (file.status === 'LOCKED' || file.status === 'STALE') {
       try {
         toast.loading(`Releasing lock on ${file.file_name}...`, { id: 'toggle-lock' });
-        await invoke('release_lock', { itemId: file.sharepoint_item_id, comment: "Manual unlock" });
+        if (file.locked_by === 'You' || !file.locked_by) {
+          await invoke('release_lock', { itemId: file.sharepoint_item_id, comment: "Manual unlock" });
+        } else {
+          // Administrative Break Lock for BIM Managers
+          await invoke('break_remote_lock', { 
+            itemId: file.sharepoint_item_id, 
+            reason: "BIM Manager override: Abandoned/Stale lock" 
+          });
+        }
         updateFileLockStatus(file.sharepoint_item_id, 'AVAILABLE');
         toast.success(`Unlocked ${file.file_name}. File is now available to team.`, { id: 'toggle-lock' });
+        refresh();
       } catch (err: any) {
         toast.error(`Release failed: ${err}`, { id: 'toggle-lock' });
       }
@@ -309,6 +375,7 @@ export const App: React.FC = () => {
         drives={drives}
         currentDriveId={currentDriveId}
         onSelectDrive={selectDrive}
+        driveLetter={driveLetter}
         onSelectQuickFolder={(folderName) => {
           const target = files.find(f => f.file_name === folderName);
           if (target && target.is_folder) {
@@ -529,8 +596,8 @@ export const App: React.FC = () => {
               <button 
                 onClick={async () => {
                   try {
-                    await invoke('open_folder_in_explorer', { folderPath: 'X:\\' });
-                    toast.success('Opening virtual X:\\ drive in Windows File Explorer');
+                    await invoke('open_folder_in_explorer', { folderPath: `${driveLetter}:\\` });
+                    toast.success(`Opening virtual ${driveLetter}:\\ drive in Windows File Explorer`);
                   } catch (e: any) {
                     toast.error(`Explorer launch failed: ${e}`);
                   }
@@ -609,6 +676,7 @@ export const App: React.FC = () => {
                 viewMode={viewMode}
                 selectedIds={selectedIds}
                 setSelectedIds={setSelectedIds}
+                driveLetter={driveLetter}
                 onLaunch={handleLaunchFile}
                 onClickFolder={navigateToFolder}
                 onFileUpload={handleFileUpload}
@@ -664,7 +732,7 @@ export const App: React.FC = () => {
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-              <span>X:\ Drive Online</span>
+              <span>{driveLetter}:\ Drive Online</span>
             </div>
             <div className="flex items-center space-x-1.5" title="Revit Server 2025 Central Host">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
@@ -698,6 +766,7 @@ export const App: React.FC = () => {
       <FilePropertiesModal 
         isOpen={isPropertiesOpen}
         file={propertiesFile}
+        driveLetter={driveLetter}
         onClose={() => {
           setIsPropertiesOpen(false);
           setPropertiesFile(null);
