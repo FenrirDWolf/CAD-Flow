@@ -1,6 +1,6 @@
 {
   "productName": "CADFlow",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "identifier": "com.cadflow.dev",
   "build": {
     "beforeDevCommand": "npm run start",
@@ -18,7 +18,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": false
   },
   "app": {
     "windows": [
