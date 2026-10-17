@@ -9,6 +9,7 @@ param(
 $ProjectsRoot = "C:\ProgramData\Autodesk\Revit Server 2025\Projects"
 $StagingDir = "C:\CADFlow_Admin\Staging"
 $BackendUrl = if ($env:CADFLOW_API_URL) { $env:CADFLOW_API_URL } else { "https://cadflow-api.onrender.com" }
+$RevitHost = if ($env:REVIT_SERVER_HOST) { $env:REVIT_SERVER_HOST } else { "212.86.105.232" }
 
 function Find-RevitServerTool {
     if ($env:REVIT_SERVER_TOOL -and (Test-Path $env:REVIT_SERVER_TOOL)) {
@@ -55,7 +56,7 @@ switch ($Action) {
             }
         }
         $result = [PSCustomObject]@{
-            ServerHost = "212.86.105.232"
+            ServerHost = $RevitHost
             RevitVersion = "2025"
             DiskFreeGB = $disk.FreeGB
             DiskUsedGB = $disk.UsedGB
@@ -76,7 +77,7 @@ switch ($Action) {
         if ($RevitToolExe) {
             Write-Output "Generating detached local model snapshot using $RevitToolExe..."
             try {
-                $cmdOutput = & $RevitToolExe createLocalRVT $ModelName -server "212.86.105.232" -destination $outPath -overwrite 2>&1
+                $cmdOutput = & $RevitToolExe createLocalRVT $ModelName -server $RevitHost -destination $outPath -overwrite 2>&1
                 if ($LASTEXITCODE -ne 0 -or !(Test-Path $outPath)) {
                     throw "RevitServerTool failed with exit code ${LASTEXITCODE}: $cmdOutput"
                 }

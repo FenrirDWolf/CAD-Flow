@@ -55,13 +55,14 @@ pub fn check_revit_compatibility() -> RevitCompatibilityReport {
     }
 
     let has_2025 = installed.iter().any(|v| v.year == 2025);
+    let host = crate::config::revit_server_host();
     let warning = if !has_2025 {
         if installed.is_empty() {
-            Some("Autodesk Revit 2025 is not detected. Central models on London Hub (212.86.105.232) require Revit 2025.".to_string())
+            Some(format!("Autodesk Revit 2025 is not detected. Central models on Central Hub ({}) require Revit 2025.", host))
         } else {
             let found_years: Vec<String> = installed.iter().map(|v| v.year.to_string()).collect();
             Some(format!(
-                "Revit Version Warning: London Hub hosts Revit 2025 models. Detected versions: [{}]. Opening with older versions will cause an Autodesk version rejection.",
+                "Revit Version Warning: Central Hub hosts Revit 2025 models. Detected versions: [{}]. Opening with older versions will cause an Autodesk version rejection.",
                 found_years.join(", ")
             ))
         }
@@ -73,7 +74,7 @@ pub fn check_revit_compatibility() -> RevitCompatibilityReport {
         installed_versions: installed,
         has_revit_2025: has_2025,
         server_target_year: 2025,
-        server_host: "212.86.105.232".to_string(),
+        server_host: host,
         warning,
     }
 }

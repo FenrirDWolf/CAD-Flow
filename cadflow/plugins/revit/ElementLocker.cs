@@ -46,8 +46,9 @@ namespace CADFlowRevit
             {
                 // Fire-and-forget fast lock request to local CADFlow Desktop Agent
                 var payload = new StringContent(string.Format("{{\"file\":\"{0}\", \"element_id\":{1}}}", documentName, elementId), Encoding.UTF8, "application/json");
+                string desktopUrl = Environment.GetEnvironmentVariable("CADFLOW_DESKTOP_URL") ?? "http://localhost:1420";
                 // Using synchronous Wait for demonstration, in production use async or pre-fetch locks
-                var response = client.PostAsync("http://localhost:1420/api/local/elements/lock", payload).Result;
+                var response = client.PostAsync(string.Format("{0}/api/local/elements/lock", desktopUrl), payload).Result;
                 return response.IsSuccessStatusCode;
             }
             catch

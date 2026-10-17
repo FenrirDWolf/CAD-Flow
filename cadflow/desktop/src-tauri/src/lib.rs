@@ -16,6 +16,7 @@ mod windows_utils;
 mod delta_uploader;
 mod prefetcher;
 mod queue_manager;
+pub mod config;
 
 use tauri::{State, Emitter};
 use std::path::PathBuf;
@@ -71,24 +72,28 @@ async fn get_pending_offline_syncs() -> Result<Vec<queue_manager::PendingSyncJob
 
 #[tauri::command]
 async fn break_remote_lock(item_id: String, reason: Option<String>) -> Result<(), String> {
+    let api_key = crate::config::api_key();
+    let api_base = crate::config::api_base_url();
     let client = Client::builder().default_headers({
         let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert("X-CADFlow-API-Key", reqwest::header::HeaderValue::from_static("dev-cadflow-secret-key-123"));
+        if let Ok(val) = reqwest::header::HeaderValue::from_str(&api_key) {
+            headers.insert("X-CADFlow-API-Key", val);
+        }
         headers
     }).build().unwrap();
     // Try DELETE /api/v1/admin/locks/{id} first, fallback to POST /api/v1/locks/break
-    let delete_url = format!("https://cadflow-api.onrender.com/api/v1/admin/locks/{}", item_id);
+    let delete_url = format!("{}/api/v1/admin/locks/{}", api_base, item_id);
     let res = client.delete(&delete_url).send().await;
 
     let success = match res {
         Ok(r) if r.status().is_success() => true,
         _ => {
-            let fallback_url = "https://cadflow-api.onrender.com/api/v1/locks/break";
+            let fallback_url = format!("{}/api/v1/locks/break", api_base);
             let payload = json!({
                 "sharepoint_item_id": item_id,
                 "reason": reason.unwrap_or_else(|| "BIM Manager override: Abandoned/Stale lock".to_string())
             });
-            client.post(fallback_url).json(&payload).send().await.map(|r| r.status().is_success()).unwrap_or(false)
+            client.post(&fallback_url).json(&payload).send().await.map(|r| r.status().is_success()).unwrap_or(false)
         }
     };
 
@@ -122,9 +127,13 @@ async fn upload_file(upload_url: String, file_path: String) -> Result<(), String
 
 #[tauri::command]
 async fn acquire_lock(item_id: String) -> Result<(), String> {
+    let api_key = crate::config::api_key();
+    let api_base = crate::config::api_base_url();
     let client = Client::builder().default_headers({
         let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert("X-CADFlow-API-Key", reqwest::header::HeaderValue::from_static("dev-cadflow-secret-key-123"));
+        if let Ok(val) = reqwest::header::HeaderValue::from_str(&api_key) {
+            headers.insert("X-CADFlow-API-Key", val);
+        }
         headers
     }).build().unwrap();
     let username = std::env::var("USERNAME").unwrap_or_else(|_| "Unknown".to_string());
@@ -136,7 +145,8 @@ async fn acquire_lock(item_id: String) -> Result<(), String> {
         "windows_username": username
     });
 
-    let res = client.post("https://cadflow-api.onrender.com/api/v1/locks/acquire")
+    let url = format!("{}/api/v1/locks/acquire", api_base);
+    let res = client.post(&url)
         .json(&payload)
         .send()
         .await
@@ -154,9 +164,13 @@ async fn acquire_lock(item_id: String) -> Result<(), String> {
 #[tauri::command]
 async fn release_lock(item_id: String, comment: String) -> Result<(), String> {
     let _ = comment; // Silence unused variable warning
+    let api_key = crate::config::api_key();
+    let api_base = crate::config::api_base_url();
     let client = Client::builder().default_headers({
         let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert("X-CADFlow-API-Key", reqwest::header::HeaderValue::from_static("dev-cadflow-secret-key-123"));
+        if let Ok(val) = reqwest::header::HeaderValue::from_str(&api_key) {
+            headers.insert("X-CADFlow-API-Key", val);
+        }
         headers
     }).build().unwrap();
     let username = std::env::var("USERNAME").unwrap_or_else(|_| "Unknown".to_string());
@@ -168,7 +182,8 @@ async fn release_lock(item_id: String, comment: String) -> Result<(), String> {
         "windows_username": username
     });
 
-    let res = client.post("https://cadflow-api.onrender.com/api/v1/locks/release")
+    let url = format!("{}/api/v1/locks/release", api_base);
+    let res = client.post(&url)
         .json(&payload)
         .send()
         .await
@@ -204,9 +219,13 @@ async fn watch_file_closure(item_id: String, file_name: String, file_path: Strin
         
         // Phase 2: Wait for CAD program to release the file, sending periodic heartbeats (Failure Mode C)
         let mut heartbeat_ticker = 0u64;
+        let api_key = crate::config::api_key();
+        let api_base = crate::config::api_base_url();
         let client = Client::builder().default_headers({
             let mut headers = reqwest::header::HeaderMap::new();
-            headers.insert("X-CADFlow-API-Key", reqwest::header::HeaderValue::from_static("dev-cadflow-secret-key-123"));
+            if let Ok(val) = reqwest::header::HeaderValue::from_str(&api_key) {
+                headers.insert("X-CADFlow-API-Key", val);
+            }
             headers
         }).build().unwrap();
 
@@ -218,7 +237,8 @@ async fn watch_file_closure(item_id: String, file_name: String, file_path: Strin
             if heartbeat_ticker >= 60 {
                 heartbeat_ticker = 0;
                 let hb_payload = json!({ "sharepoint_item_id": item_id.clone() });
-                let _ = client.post("https://cadflow-api.onrender.com/api/v1/locks/heartbeat")
+                let hb_url = format!("{}/api/v1/locks/heartbeat", api_base);
+                let _ = client.post(&hb_url)
                     .json(&hb_payload)
                     .send()
                     .await;
@@ -249,7 +269,8 @@ async fn watch_file_closure(item_id: String, file_name: String, file_path: Strin
                     "machine_hostname": "local",
                     "windows_username": username
                 });
-                let release_res = client.post("https://cadflow-api.onrender.com/api/v1/locks/release")
+                let release_url = format!("{}/api/v1/locks/release", api_base);
+                let release_res = client.post(&release_url)
                     .json(&release_payload)
                     .send()
                     .await;
@@ -494,8 +515,8 @@ pub struct RevitServerStatus {
 
 #[tauri::command]
 async fn get_revit_server_status() -> Result<RevitServerStatus, String> {
-    let host = "212.86.105.232";
-    let _ = windows_utils::auto_configure_revit_server(&[host]);
+    let host = crate::config::revit_server_host();
+    let _ = windows_utils::auto_configure_revit_server(&[&host]);
     
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(3))
@@ -522,14 +543,14 @@ async fn get_revit_server_status() -> Result<RevitServerStatus, String> {
             Ok(RevitServerStatus {
                 configured: true,
                 online: true,
-                host: host.to_string(),
+                host: host.clone(),
                 machine_name: props.and_then(|p| p.machine_name),
             })
         },
         _ => Ok(RevitServerStatus {
             configured: true,
             online: false,
-            host: host.to_string(),
+            host: host.clone(),
             machine_name: None,
         })
     }
@@ -538,7 +559,8 @@ async fn get_revit_server_status() -> Result<RevitServerStatus, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // 1. Auto-configure Revit Server RSN.ini across all installed Revit years on startup
-    let _ = crate::windows_utils::auto_configure_revit_server(&["212.86.105.232"]);
+    let host = crate::config::revit_server_host();
+    let _ = crate::windows_utils::auto_configure_revit_server(&[&host]);
 
     // Start Overnight Prefetch Background Worker
     tauri::async_runtime::spawn(async move {

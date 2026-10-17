@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
+import { API_BASE_URL, CADFLOW_API_KEY } from '../config';
 
 export const HandoverModal: React.FC<{
   isOpen: boolean;
@@ -23,9 +24,9 @@ export const HandoverModal: React.FC<{
       try {
         const driveLetter = await invoke<string>('get_mounted_drive_letter').catch(() => 'X');
         const localPath = `${driveLetter}:\\Project\\${fileName}`;
-        const sessionRes = await fetch('https://cadflow-api.onrender.com/api/v1/sharepoint/upload-session', {
+        const sessionRes = await fetch(`${API_BASE_URL}/api/v1/sharepoint/upload-session`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' },
+          headers: { 'Content-Type': 'application/json', 'X-CADFlow-API-Key': CADFLOW_API_KEY },
           body: JSON.stringify({ drive_id: 'b!IdX34-u7eU2AqcB76OgXfRVhq7SBFw9Ap3AlWoS2USscrpxsjdDPTrcG4Ij7XcJ0', file_name: fileName, parent_item_id: 'root' })
         });
         if (sessionRes.ok) {

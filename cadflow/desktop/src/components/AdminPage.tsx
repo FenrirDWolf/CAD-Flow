@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { OrganizationProfile } from '@clerk/clerk-react';
 import { toast } from 'sonner';
+import { API_BASE_URL, CADFLOW_API_KEY, REVIT_SERVER_HOST } from '../config';
 
 export const AdminPage: React.FC = () => {
   const [users, setUsers] = useState<any[]>([]);
@@ -32,7 +33,7 @@ export const AdminPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'users' | 'vault-access' | 'locks' | 'storage' | 'audit' | 'revit-lifecycle'>('revit-lifecycle');
 
   const [revitLifecycle, setRevitLifecycle] = useState<any>({
-    server_host: "212.86.105.232",
+    server_host: REVIT_SERVER_HOST,
     revit_version: "2025",
     server_status: "ONLINE",
     disk_free_gb: 33.36,
@@ -67,9 +68,9 @@ export const AdminPage: React.FC = () => {
     setIsPublishing(true);
     toast.loading(`Extracting detached snapshot of ${modelName}...`, { id: "snapshot" });
     try {
-      const res = await fetch('https://cadflow-api.onrender.com/api/v1/revit-lifecycle/publish-snapshot', {
+      const res = await fetch(`${API_BASE_URL}/api/v1/revit-lifecycle/publish-snapshot`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' },
+        headers: { 'Content-Type': 'application/json', 'X-CADFlow-API-Key': CADFLOW_API_KEY },
         body: JSON.stringify({ model_name: modelName, comment, destination_folder: "03_Published Deliverables" })
       });
       if (res.ok) {
@@ -90,9 +91,9 @@ export const AdminPage: React.FC = () => {
     setIsArchiving(true);
     toast.loading(`Bundling and uploading ${modelName} to SharePoint 04_Archive...`, { id: "archive" });
     try {
-      await fetch('https://cadflow-api.onrender.com/api/v1/revit-lifecycle/archive-project', {
+      await fetch(`${API_BASE_URL}/api/v1/revit-lifecycle/archive-project`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' },
+        headers: { 'Content-Type': 'application/json', 'X-CADFlow-API-Key': CADFLOW_API_KEY },
         body: JSON.stringify({ model_name: modelName, reason: "BIM Manager archive" })
       });
       
@@ -152,7 +153,7 @@ export const AdminPage: React.FC = () => {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('https://cadflow-api.onrender.com/api/v1/admin/users', { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
+      const res = await fetch(`${API_BASE_URL}/api/v1/admin/users`, { headers: { 'X-CADFlow-API-Key': CADFLOW_API_KEY } });
       const data = await res.json();
       setUsers(data.users || []);
     } catch (e) {
@@ -162,7 +163,7 @@ export const AdminPage: React.FC = () => {
 
   const fetchLocks = async () => {
     try {
-      const res = await fetch('https://cadflow-api.onrender.com/api/v1/admin/locks', { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
+      const res = await fetch(`${API_BASE_URL}/api/v1/admin/locks`, { headers: { 'X-CADFlow-API-Key': CADFLOW_API_KEY } });
       const data = await res.json();
       setLocks(data.locks || []);
     } catch (e) {
@@ -172,11 +173,11 @@ export const AdminPage: React.FC = () => {
 
   const fetchDrivesAndStorage = async () => {
     try {
-      const driveRes = await fetch('https://cadflow-api.onrender.com/api/v1/sharepoint/tree', { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
+      const driveRes = await fetch(`${API_BASE_URL}/api/v1/sharepoint/tree`, { headers: { 'X-CADFlow-API-Key': CADFLOW_API_KEY } });
       const driveData = await driveRes.json();
       setDrives(driveData.tree || []);
       
-      const storageRes = await fetch('https://cadflow-api.onrender.com/api/v1/sharepoint/storage', { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
+      const storageRes = await fetch(`${API_BASE_URL}/api/v1/sharepoint/storage`, { headers: { 'X-CADFlow-API-Key': CADFLOW_API_KEY } });
       const storageData = await storageRes.json();
       setStorage(storageData);
     } catch (e) {
@@ -187,7 +188,7 @@ export const AdminPage: React.FC = () => {
   
   const fetchAuditLogs = async () => {
     try {
-      const res = await fetch('https://cadflow-api.onrender.com/api/v1/admin/audit-logs', { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
+      const res = await fetch(`${API_BASE_URL}/api/v1/admin/audit-logs`, { headers: { 'X-CADFlow-API-Key': CADFLOW_API_KEY } });
       if (res.ok) {
         const data = await res.json();
         setAuditLogs(data);
@@ -208,9 +209,9 @@ export const AdminPage: React.FC = () => {
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('https://cadflow-api.onrender.com/api/v1/admin/users', {
+      const res = await fetch(`${API_BASE_URL}/api/v1/admin/users`, {
       method: 'POST',
-        headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123', 'Content-Type': 'application/json' },
+        headers: { 'X-CADFlow-API-Key': CADFLOW_API_KEY, 'Content-Type': 'application/json' },
         body: JSON.stringify(newUser)
       });
       if (res.ok) {
@@ -233,7 +234,7 @@ export const AdminPage: React.FC = () => {
       return;
     }
     try {
-      const res = await fetch(`https://cadflow-api.onrender.com/api/v1/sharepoint/folder/${drive_id}/root`, { headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' } });
+      const res = await fetch(`${API_BASE_URL}/api/v1/sharepoint/folder/${drive_id}/root`, { headers: { 'X-CADFlow-API-Key': CADFLOW_API_KEY } });
       const data = await res.json();
       setFolders(data.children.filter((c: any) => c.is_folder));
     } catch(e) {
@@ -244,9 +245,9 @@ export const AdminPage: React.FC = () => {
   const handleGrantAccess = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('https://cadflow-api.onrender.com/api/v1/admin/access', {
+      const res = await fetch(`${API_BASE_URL}/api/v1/admin/access`, {
       method: 'POST',
-        headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123', 'Content-Type': 'application/json' },
+        headers: { 'X-CADFlow-API-Key': CADFLOW_API_KEY, 'Content-Type': 'application/json' },
         body: JSON.stringify(newAccess)
       });
       if (res.ok) {
@@ -263,9 +264,9 @@ export const AdminPage: React.FC = () => {
 
   const handleForceReleaseLock = async (itemId: string) => {
     try {
-      const res = await fetch(`https://cadflow-api.onrender.com/api/v1/admin/locks/${itemId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/admin/locks/${itemId}`, {
       method: 'DELETE',
-        headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' }
+        headers: { 'X-CADFlow-API-Key': CADFLOW_API_KEY }
       });
       if (res.ok) {
         toast.success('Lock force released');

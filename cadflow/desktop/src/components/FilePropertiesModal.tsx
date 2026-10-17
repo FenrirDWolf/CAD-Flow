@@ -3,6 +3,7 @@ import { type FileNode } from '../hooks/useRealtimeLocks';
 import { invoke } from '@tauri-apps/api/core';
 import { ShieldCheck, HardDrive, FileText, CheckCircle2, Lock, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { REVIT_SERVER_HOST } from '../config';
 
 interface FilePropertiesModalProps {
   isOpen: boolean;
@@ -222,7 +223,7 @@ export const FilePropertiesModal: React.FC<FilePropertiesModalProps> = ({ isOpen
                 <div className="grid grid-cols-3 gap-2">
                   <span className="text-muted-foreground">Revit Server:</span>
                   <span className="col-span-2 font-medium text-blue-500">
-                    London Hub (212.86.105.232)
+                    London Hub ({REVIT_SERVER_HOST})
                   </span>
                 </div>
 

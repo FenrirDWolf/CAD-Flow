@@ -19,7 +19,8 @@ namespace CADFlowRevit
             try
             {
                 // Fetch the latest metadata from CADFlow FastAPI
-                var response = client.GetStringAsync(string.Format("http://localhost:1420/api/local/metadata?file={0}", doc.PathName)).Result;
+                string desktopUrl = Environment.GetEnvironmentVariable("CADFLOW_DESKTOP_URL") ?? "http://localhost:1420";
+                var response = client.GetStringAsync(string.Format("{0}/api/local/metadata?file={1}", desktopUrl, doc.PathName)).Result;
                 // e.g. {"Revision": "P02", "Status": "S2", "Description": "Issued for Coordination"}
                 
                 using (Transaction t = new Transaction(doc, "CADFlow Parameter Sync"))

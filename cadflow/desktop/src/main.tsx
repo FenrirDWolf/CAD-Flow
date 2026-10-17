@@ -5,13 +5,14 @@ import './index.css';
 import { ThemeProvider } from './components/ThemeProvider';
 import { ClerkProvider } from '@clerk/clerk-react';
 import { dark } from '@clerk/themes';
+import { CLERK_PUBLISHABLE_KEY } from './config';
 
 const container = document.getElementById('root');
 if (!container) {
   throw new Error('Root container missing in index.html');
 }
 
-const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_test_Zm9uZC1rb2RpYWstNTc3My5jbGVyay5hY2NvdW50cy5kZXYk";
+const PUBLISHABLE_KEY = CLERK_PUBLISHABLE_KEY;
 
 if (!PUBLISHABLE_KEY) {
   throw new Error("Missing Publishable Key")

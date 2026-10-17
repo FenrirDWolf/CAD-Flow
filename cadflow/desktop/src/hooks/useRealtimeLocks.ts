@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@clerk/clerk-react';
+import { API_BASE_URL, CADFLOW_API_KEY } from '../config';
 
 export type LockStatus = 'PENDING' | 'ACTIVE' | 'SYNCING' | 'STALE' | 'AVAILABLE';
 
@@ -72,8 +73,8 @@ export function useSharePointExplorer() {
     let isMounted = true;
     const fetchDrives = async () => {
       try {
-        const response = await fetch(`https://cadflow-api.onrender.com/api/v1/sharepoint/tree`, { 
-          headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' },
+        const response = await fetch(`${API_BASE_URL}/api/v1/sharepoint/tree`, { 
+          headers: { 'X-CADFlow-API-Key': CADFLOW_API_KEY },
           signal: AbortSignal.timeout(15000)
         });
         if (!response.ok) throw new Error('API Tree response not OK');
@@ -111,8 +112,8 @@ export function useSharePointExplorer() {
     const fetchFolder = async () => {
       setIsLoading(true);
       try {
-        const response = await fetch(`https://cadflow-api.onrender.com/api/v1/sharepoint/folder/${currentDriveId}/${currentFolderId}`, { 
-          headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' },
+        const response = await fetch(`${API_BASE_URL}/api/v1/sharepoint/folder/${currentDriveId}/${currentFolderId}`, { 
+          headers: { 'X-CADFlow-API-Key': CADFLOW_API_KEY },
           signal: AbortSignal.timeout(15000)
         });
         if (response.ok) {
@@ -238,9 +239,9 @@ export function useSharePointExplorer() {
     const driveName = currentDrive ? currentDrive.drive_name : 'Vault';
     
     try {
-      const res = await fetch('https://cadflow-api.onrender.com/api/v1/sharepoint/folder/create', {
+      const res = await fetch(`${API_BASE_URL}/api/v1/sharepoint/folder/create`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' },
+        headers: { 'Content-Type': 'application/json', 'X-CADFlow-API-Key': CADFLOW_API_KEY },
         body: JSON.stringify({ drive_id: currentDriveId, parent_item_id: currentFolderId, folder_name: folderName })
       });
       const data = res.ok ? await res.json() : null;
@@ -278,9 +279,9 @@ export function useSharePointExplorer() {
 
     if (currentDriveId && id) {
       try {
-        await fetch('https://cadflow-api.onrender.com/api/v1/sharepoint/item/rename', {
+        await fetch(`${API_BASE_URL}/api/v1/sharepoint/item/rename`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' },
+          headers: { 'Content-Type': 'application/json', 'X-CADFlow-API-Key': CADFLOW_API_KEY },
           body: JSON.stringify({ drive_id: currentDriveId, item_id: id, new_name: newName })
         });
       } catch (err) {
@@ -301,9 +302,9 @@ export function useSharePointExplorer() {
     if (currentDriveId) {
       for (const id of ids) {
         try {
-          await fetch(`https://cadflow-api.onrender.com/api/v1/sharepoint/item/delete/${currentDriveId}/${id}`, {
+          await fetch(`${API_BASE_URL}/api/v1/sharepoint/item/delete/${currentDriveId}/${id}`, {
             method: 'DELETE',
-            headers: { 'X-CADFlow-API-Key': 'dev-cadflow-secret-key-123' }
+            headers: { 'X-CADFlow-API-Key': CADFLOW_API_KEY }
           });
         } catch (err) {
           console.warn("SharePoint delete sync error:", err);

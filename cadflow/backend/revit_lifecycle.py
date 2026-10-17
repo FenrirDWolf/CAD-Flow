@@ -31,7 +31,7 @@ async def get_lifecycle_status():
     Returns the real-time status of Revit Server 2025 and active vs archived models.
     """
     return {
-        "server_host": "212.86.105.232",
+        "server_host": os.getenv("REVIT_SERVER_HOST", "212.86.105.232"),
         "revit_version": "2025",
         "server_status": "ONLINE",
         "server_roles": ["Host", "Accelerator", "Admin"],

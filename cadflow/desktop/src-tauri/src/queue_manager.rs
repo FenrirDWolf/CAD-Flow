@@ -101,7 +101,9 @@ pub fn start_offline_queue_worker(app_handle: AppHandle) {
                 Err(_) => continue,
             };
 
-            let is_online = client.get("https://cadflow-api.onrender.com/health")
+            let api_base = crate::config::api_base_url();
+            let health_url = format!("{}/health", api_base);
+            let is_online = client.get(&health_url)
                 .send()
                 .await
                 .map(|r| r.status().is_success())
@@ -132,8 +134,9 @@ pub fn start_offline_queue_worker(app_handle: AppHandle) {
                     "comment": "Auto-synced via offline dirty queue recovery"
                 });
 
-                let lock_res = client.post("https://cadflow-api.onrender.com/api/v1/locks/release")
-                    .header("X-CADFlow-API-Key", "dev-cadflow-secret-key-123")
+                let release_url = format!("{}/api/v1/locks/release", api_base);
+                let lock_res = client.post(&release_url)
+                    .header("X-CADFlow-API-Key", crate::config::api_key())
                     .json(&release_payload)
                     .send()
                     .await;

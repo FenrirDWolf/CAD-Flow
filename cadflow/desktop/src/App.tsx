@@ -9,6 +9,7 @@ import { FilePropertiesModal } from './components/FilePropertiesModal';
 import { useSharePointExplorer, type FileNode } from './hooks/useRealtimeLocks';
 import { Toaster, toast } from 'sonner';
 import { invoke } from '@tauri-apps/api/core';
+import { API_BASE_URL, REVIT_SERVER_HOST } from './config';
 import { 
   Search, 
   ChevronRight, 
@@ -691,7 +692,7 @@ export const App: React.FC = () => {
                 onApproveClick={async (file) => {
                   toast.loading(`Requesting ISO 19650 approval for ${file.file_name}...`, { id: 'approve' });
                   try {
-                    const res = await fetch(`https://cadflow-api.onrender.com/api/v1/files/${file.sharepoint_item_id}/approve`, { method: 'POST' });
+                    const res = await fetch(`${API_BASE_URL}/api/v1/files/${file.sharepoint_item_id}/approve`, { method: 'POST' });
                     if (res.ok) {
                       toast.success(`${file.file_name} has been approved to SHARED state!`, { id: 'approve' });
                     } else {
@@ -736,7 +737,7 @@ export const App: React.FC = () => {
             </div>
             <div className="flex items-center space-x-1.5" title="Revit Server 2025 Central Host">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-              <span>Revit Server 2025: 212.86.105.232 (London)</span>
+              <span>Revit Server 2025: {REVIT_SERVER_HOST} (Central)</span>
             </div>
           </div>
         </footer>

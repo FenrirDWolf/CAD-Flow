@@ -3,6 +3,7 @@ import { X, Clock, RotateCcw, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
+import { API_BASE_URL } from '../config';
 
 export interface Version {
   id: string;
@@ -31,7 +32,7 @@ export const VersionHistoryModal: React.FC<Props> = ({ isOpen, fileName, sharepo
   const fetchVersions = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`https://cadflow-api.onrender.com/api/v1/files/${sharepointItemId}/versions`);
+      const res = await fetch(`${API_BASE_URL}/api/v1/files/${sharepointItemId}/versions`);
       if (res.ok) {
         const data = await res.json();
         setVersions(data);
@@ -47,7 +48,7 @@ export const VersionHistoryModal: React.FC<Props> = ({ isOpen, fileName, sharepo
 
   const handleRestore = async (versionId: string) => {
     try {
-      const res = await fetch(`https://cadflow-api.onrender.com/api/v1/files/${sharepointItemId}/restore/${versionId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/files/${sharepointItemId}/restore/${versionId}`, {
         method: 'POST'
       });
       if (res.ok) {

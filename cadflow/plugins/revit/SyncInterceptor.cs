@@ -16,7 +16,8 @@ namespace CADFlow.RevitPlugin
         
         public SyncInterceptor()
         {
-            client.DefaultRequestHeaders.Add("X-CADFlow-API-Key", "dev-cadflow-secret-key-123");
+            string apiKey = Environment.GetEnvironmentVariable("CADFLOW_API_KEY") ?? "dev-cadflow-secret-key-123";
+            client.DefaultRequestHeaders.Add("X-CADFlow-API-Key", apiKey);
         }
         
         public Result OnStartup(UIControlledApplication application)

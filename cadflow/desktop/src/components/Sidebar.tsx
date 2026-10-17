@@ -17,6 +17,7 @@ import { twMerge } from 'tailwind-merge';
 import type { ViewType } from '../App';
 import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-react';
 import { invoke } from '@tauri-apps/api/core';
+import { REVIT_SERVER_HOST } from '../config';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -55,7 +56,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         const status: any = await invoke('get_revit_server_status');
         setRevitServerStatus(status);
       } catch (e) {
-        setRevitServerStatus({ online: true, host: '212.86.105.232' });
+        setRevitServerStatus({ online: true, host: REVIT_SERVER_HOST });
       }
     };
     fetchStatus();
@@ -148,7 +149,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               "group mt-1.5 py-2 px-2 rounded-md cursor-pointer flex items-center transition-all hover:bg-muted/60",
               isCollapsed && "justify-center"
             )}
-            title="Autodesk Revit Server 2025 Host (London Hub: 212.86.105.232) - Ready for Multi-User Worksharing"
+            title={`Autodesk Revit Server 2025 Host (${revitServerStatus?.host || REVIT_SERVER_HOST}) - Ready for Multi-User Worksharing`}
           >
             <div className="relative">
               <Server size={18} className="text-blue-500 shrink-0" />
@@ -160,7 +161,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span className="text-xs font-medium text-foreground truncate">Revit Server 2025</span>
                   <span className="text-[9px] px-1 rounded bg-blue-500/10 text-blue-600 font-semibold">Online</span>
                 </div>
-                <div className="text-[10px] text-muted-foreground truncate">London Hub &bull; 212.86.105.232</div>
+                <div className="text-[10px] text-muted-foreground truncate">{revitServerStatus?.host || REVIT_SERVER_HOST}</div>
               </div>
             )}
           </div>
