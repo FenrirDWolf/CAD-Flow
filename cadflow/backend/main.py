@@ -184,7 +184,8 @@ async def get_sharepoint_tree(user_id: str = None, db: AsyncSession = Depends(ge
             user = user_result.scalar_one_or_none()
             is_admin = user and user.role.value == "ADMIN"
             
-            if not is_admin:
+            # Only restrict if non-admin AND explicit access rules exist
+            if not is_admin and len(access_rows) > 0:
                 user_tree = []
                 for row in access_rows:
                     if row.folder_id:
@@ -206,98 +207,6 @@ async def get_sharepoint_tree(user_id: str = None, db: AsyncSession = Depends(ge
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-import asyncio
-import time
-
-# Global cache for tree
-_tree_cache = {"data": None, "timestamp": 0}
-CACHE_TTL = 300  # 5 minutes
-
-@app.get("/api/v1/sharepoint/tree")
-async def get_sharepoint_tree():
-    """
-    Crawls the available drives and resolves .url shortcuts to their shared target folders,
-    returning them as independent Workspaces/Drives. Cached for 5 minutes.
-    """
-    global _tree_cache
-    if _tree_cache["data"] and time.time() - _tree_cache["timestamp"] < CACHE_TTL:
-        return _tree_cache["data"]
-
-    try:
-        master_token = get_master_graph_token()
-        headers = {
-            "Authorization": f"Bearer {master_token}",
-            "Accept": "application/json"
-        }
-        
-        transport = httpx.AsyncHTTPTransport(retries=3)
-        async with httpx.AsyncClient(transport=transport, follow_redirects=True, limits=httpx.Limits(max_connections=5, max_keepalive_connections=5)) as client:
-            drives_resp = await client.get(
-                "https://graph.microsoft.com/v1.0/sites/root/drives",
-                headers=headers
-            )
-            
-            if drives_resp.status_code != 200:
-                raise HTTPException(status_code=drives_resp.status_code, detail=drives_resp.text)
-                
-            drives = drives_resp.json().get("value", [])
-            
-            # Fetch children for all drives concurrently
-            async def fetch_children(drive_id):
-                resp = await client.get(
-                    f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root/children",
-                    headers=headers
-                )
-                if resp.status_code == 200:
-                    return drive_id, resp.json().get("value", [])
-                return drive_id, []
-
-            children_results = await asyncio.gather(*(fetch_children(d["id"]) for d in drives))
-            
-            tree = []
-            
-            async def resolve_url(drive_id, item):
-                resp = await client.get(
-                    f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item['id']}/content",
-                    headers=headers
-                )
-                if resp.status_code == 200:
-                    content_text = resp.text
-                    for line in content_text.splitlines():
-                        if line.startswith("URL="):
-                            shared_url = line[4:].strip()
-                            encoded = encode_sharing_url(shared_url)
-                            shared_resp = await client.get(
-                                f"https://graph.microsoft.com/v1.0/shares/{encoded}/driveItem",
-                                headers=headers
-                            )
-                            if shared_resp.status_code == 200:
-                                shared_item = shared_resp.json()
-                                return {
-                                    "drive_id": shared_item["parentReference"]["driveId"],
-                                    "drive_name": shared_item["name"],
-                                    "type": "drive",
-                                    "root_item_id": shared_item["id"]
-                                }
-                return None
-
-            tasks = []
-            for drive_id, children in children_results:
-                for item in children:
-                    if item["name"].endswith(".url"):
-                        tasks.append(resolve_url(drive_id, item))
-            
-            resolved = await asyncio.gather(*tasks)
-            tree = [r for r in resolved if r]
-                
-            result = {"tree": tree}
-            _tree_cache["data"] = result
-            _tree_cache["timestamp"] = time.time()
-            return result
-            
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/v1/sharepoint/storage")
 async def get_storage_quota():

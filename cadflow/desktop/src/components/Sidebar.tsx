@@ -129,7 +129,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <span className="text-xs font-medium text-foreground truncate">CADFlow ({driveLetter}:)</span>
                     <span className="text-[9px] px-1 rounded bg-emerald-500/10 text-emerald-600 font-semibold">Mounted</span>
                   </div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5 truncate">418 GB free of 512 GB</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5 truncate">3.8 TB free of 4.0 TB (SharePoint + Multi-Vault)</div>
                 </div>
               )}
             </div>
@@ -137,7 +137,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {/* Storage Progress Bar */}
             {!isCollapsed && (
               <div className="w-full bg-muted rounded-full h-1 mt-1.5 overflow-hidden">
-                <div className="bg-primary h-full rounded-full" style={{ width: '18%' }}></div>
+                <div className="bg-primary h-full rounded-full" style={{ width: '5%' }}></div>
               </div>
             )}
           </div>

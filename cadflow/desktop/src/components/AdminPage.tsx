@@ -40,8 +40,8 @@ export const AdminPage: React.FC = () => {
     disk_total_gb: 50.0,
     active_models: [
       {
-        name: "HUB-AR-ZZ-MD-M3-0001_Central.rvt",
-        size_mb: 142.5,
+        name: "25010-CON-B1-ZZ-M3-Z-0101.rvt",
+        size_mb: 54.6,
         active_collaborators: "30-40 Engineers Ready",
         last_sync: "Active Worksharing",
         status: "Active (Worksharing Enabled)"
@@ -49,10 +49,10 @@ export const AdminPage: React.FC = () => {
     ],
     sharepoint_archives: [
       {
-        name: "BTP-AR-ZZ-MD-M3-0001_Campus_Master_Archive.zip",
-        size_mb: 318.0,
-        archived_at: "2026-09-15 18:30:00",
-        sharepoint_path: "X:\\Bangalore Tech Park Campus\\04_Archive",
+        name: "FRH-TOD-ZZ-ZZ-M3-A-0101-P04_Archive.zip",
+        size_mb: 47.8,
+        archived_at: "2026-10-12 18:30:00",
+        sharepoint_path: "X:\\Company Archive A\\04_Archive",
         status: "Archived in SharePoint (0 bytes on VM)"
       }
     ]
@@ -104,9 +104,9 @@ export const AdminPage: React.FC = () => {
           ...prev.sharepoint_archives,
           {
             name: `${modelName.replace('.rvt', '')}_Archive.zip`,
-            size_mb: 142.5,
+            size_mb: 54.6,
             archived_at: "Just now",
-            sharepoint_path: "X:\\London Commercial Hub\\04_Archive",
+            sharepoint_path: "X:\\Company Archive A\\04_Archive",
             status: "Archived in SharePoint (0 bytes on VM)"
           }
         ]
