@@ -37,17 +37,37 @@ fn is_drive_letter_available(letter: char) -> bool {
     !Path::new(&path).exists()
 }
 
+/// Sets custom drive label in Windows File Explorer (This PC)
+fn set_windows_explorer_drive_label(letter: char, label: &str) {
+    use winreg::enums::*;
+    use winreg::RegKey;
+
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let subkey_path = format!(r"Software\Microsoft\Windows\CurrentVersion\Explorer\DriveIcons\{}\DefaultLabel", letter);
+    if let Ok((key, _)) = hkcu.create_subkey(&subkey_path) {
+        let _ = key.set_value("", &label);
+    }
+}
+
 /// Mounts the local disk cache to the first available virtual drive letter (X:, Y:, Z:, etc.)
 /// Resolves Failure Mode A: Drive Letter Collision
 pub fn mount_virtual_drive(cache_path: &Path) -> Result<String, String> {
     let path_str = cache_path.to_str().ok_or("Invalid path encoding for cache_path")?;
     
+    // Ensure standard project and vault cache directories exist
+    let _ = std::fs::create_dir_all(cache_path.join("Project"));
+    let _ = std::fs::create_dir_all(cache_path.join("Company Archive A"));
+    let _ = std::fs::create_dir_all(cache_path.join("Company Archive B"));
+    let _ = std::fs::create_dir_all(cache_path.join("Company Archive C"));
+    let _ = std::fs::create_dir_all(cache_path.join("SharePoint Documents"));
+
     // 1. First, check if we already have an active mount for our cache
     for &letter in CANDIDATE_DRIVE_LETTERS {
         if is_drive_already_cadflow(letter, cache_path) {
             let letter_str = letter.to_string();
             let mut current = CURRENT_MOUNTED_DRIVE.lock().unwrap();
             *current = Some(letter_str.clone());
+            set_windows_explorer_drive_label(letter, "CADFlow (SharePoint)");
             crate::debug_logger::debug_log(&format!("CADFlow cache already active on {}:\\", letter));
             return Ok(letter_str);
         }
@@ -87,6 +107,7 @@ pub fn mount_virtual_drive(cache_path: &Path) -> Result<String, String> {
         let letter_str = letter.to_string();
         let mut current = CURRENT_MOUNTED_DRIVE.lock().unwrap();
         *current = Some(letter_str.clone());
+        set_windows_explorer_drive_label(letter, "CADFlow (SharePoint)");
         crate::debug_logger::debug_log(&format!("Successfully mounted CADFlow virtual drive on {}:\\", letter));
         Ok(letter_str)
     } else {
