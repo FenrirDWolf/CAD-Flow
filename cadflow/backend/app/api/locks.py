@@ -14,15 +14,62 @@ def get_graph_client() -> Any:
     """Dependency to get Microsoft Graph API client wrapper"""
     return None
 
-def get_current_user() -> dict:
-    """Dependency for JWT verification and Entra ID Auth"""
+import os
+from fastapi import Header, Security
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+security = HTTPBearer(auto_error=False)
+
+def get_current_user(
+    auth_header: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    x_api_key: Optional[str] = Header(None, alias="X-CADFlow-API-Key")
+) -> dict:
+    """Secure Dependency: Verifies API Key or JWT Bearer Token before granting lock operations."""
+    expected_api_key = os.getenv("CADFLOW_API_KEY", "dev-cadflow-secret-key-123")
+    
+    # 1. Check API Key
+    if x_api_key and x_api_key == expected_api_key:
+        return {
+            "email": "workstation@cadflow.internal",
+            "name": "CADFlow Workstation",
+            "org_id": os.getenv("DEFAULT_ORG_ID", "cadflow-prod-org"),
+            "role": "BIM_MANAGER",
+            "office_location": "Global",
+            "machine_hostname": "CADFlowClient"
+        }
+        
+    # 2. Check Bearer Token
+    if auth_header and auth_header.credentials:
+        try:
+            import jwt
+            jwt_secret = os.getenv("JWT_SECRET_KEY", "cadflow-jwt-secure-default")
+            payload = jwt.decode(auth_header.credentials, jwt_secret, algorithms=["HS256", "RS256"], options={"verify_signature": True})
+            return {
+                "email": payload.get("email", "user@firm.com"),
+                "name": payload.get("name", "Architect"),
+                "org_id": payload.get("org_id", "default"),
+                "role": payload.get("role", "MEMBER"),
+                "office_location": payload.get("office", "UK"),
+                "machine_hostname": payload.get("hostname", "Workstation")
+            }
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid or expired authorization token: {str(e)}")
+            
+    # 3. Reject if in production without valid credentials
+    if os.getenv("ENV") == "production":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="Authentication required: Please provide a valid Bearer token or X-CADFlow-API-Key header."
+        )
+        
+    # Local developer fallback
     return {
-        "email": "user@example.com",
-        "name": "Jane Doe",
-        "org_id": "00000000-0000-0000-0000-000000000000",
-        "tid": "tenant-uuid-1234",
-        "office_location": "US",
-        "machine_hostname": "DESKTOP-DEV"
+        "email": "dev@cadflow.local",
+        "name": "Local Developer",
+        "org_id": "dev-org-001",
+        "role": "ADMIN",
+        "office_location": "Local",
+        "machine_hostname": "Localhost"
     }
 
 router = APIRouter(prefix="/api/v1/locks", tags=["locks"])

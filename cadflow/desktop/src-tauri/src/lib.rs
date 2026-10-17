@@ -196,12 +196,27 @@ async fn launch_file(file_path: String) -> Result<(), String> {
     Ok(())
 }
 
+fn is_path_safe_in_vault(path: &std::path::Path) -> bool {
+    let path_str = path.to_string_lossy().to_uppercase();
+    path_str.starts_with("X:\\") || path_str.starts_with("C:\\USERS\\PUBLIC\\CADFLOW_CACHE")
+}
+
 #[tauri::command]
 async fn sync_and_launch(file_name: String, download_url: String, read_only: Option<bool>) -> Result<(), String> {
     use std::path::PathBuf;
     use std::process::Command;
     
-    crate::debug_logger::debug_log(&format!("Starting sync_and_launch for file: {}, url: {}, read_only: {:?}", file_name, download_url, read_only));
+    // 1. Sanitize file_name to prevent directory traversal attacks
+    let safe_name = std::path::Path::new(&file_name)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "Invalid file name".to_string())?;
+
+    if safe_name.contains("..") || safe_name.is_empty() {
+        return Err("Security Error: Path traversal attempt detected in file name.".to_string());
+    }
+
+    crate::debug_logger::debug_log(&format!("Starting sync_and_launch for file: {}, url: {}, read_only: {:?}", safe_name, download_url, read_only));
     
     let cache_dir = PathBuf::from("C:\\Users\\Public\\CADFlow_Cache");
     if !cache_dir.exists() {
@@ -218,7 +233,7 @@ async fn sync_and_launch(file_name: String, download_url: String, read_only: Opt
         std::fs::create_dir_all(&project_dir).map_err(|e| e.to_string())?;
     }
     
-    let local_file_path = project_dir.join(&file_name);
+    let local_file_path = project_dir.join(safe_name);
     crate::debug_logger::debug_log(&format!("Local path: {:?}", local_file_path));
     
     // Download or prepare file with zero-corruption atomic write
@@ -232,7 +247,7 @@ async fn sync_and_launch(file_name: String, download_url: String, read_only: Opt
                 },
                 _ => {
                     // Safe CAD/BIM binary header stub if download url is mock/offline
-                    let stub_data = if file_name.ends_with(".dwg") {
+                    let stub_data = if safe_name.ends_with(".dwg") {
                         b"AC1032\0CADFlow Valid AutoCAD File Stub\0".to_vec()
                     } else {
                         b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1CADFlow Valid Revit OLE Storage Stub".to_vec()
@@ -241,7 +256,7 @@ async fn sync_and_launch(file_name: String, download_url: String, read_only: Opt
                 }
             }
         } else {
-            let stub_data = if file_name.ends_with(".dwg") {
+            let stub_data = if safe_name.ends_with(".dwg") {
                 b"AC1032\0CADFlow Valid AutoCAD File Stub\0".to_vec()
             } else {
                 b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1CADFlow Valid Revit OLE Storage Stub".to_vec()
@@ -254,7 +269,7 @@ async fn sync_and_launch(file_name: String, download_url: String, read_only: Opt
     let is_ro = read_only.unwrap_or(false);
     let _ = crate::windows_utils::set_file_readonly(&local_file_path.to_string_lossy(), is_ro);
 
-    let virtual_path = format!("X:\\Project\\{}", file_name);
+    let virtual_path = format!("X:\\Project\\{}", safe_name);
     crate::debug_logger::debug_log(&format!("Launching via explorer: {}", virtual_path));
     
     let _ = Command::new("explorer.exe").arg(&virtual_path)
@@ -287,19 +302,30 @@ async fn get_file_system_properties(file_path: String) -> Result<windows_utils::
 #[tauri::command]
 async fn create_virtual_folder(folder_path: String) -> Result<(), String> {
     let p = std::path::PathBuf::from(&folder_path);
+    if !is_path_safe_in_vault(&p) {
+        return Err("Permission denied: Cannot create directory outside CADFlow storage vaults.".into());
+    }
     std::fs::create_dir_all(&p).map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
 async fn rename_virtual_item(old_path: String, new_path: String) -> Result<(), String> {
-    std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
+    let p_old = std::path::PathBuf::from(&old_path);
+    let p_new = std::path::PathBuf::from(&new_path);
+    if !is_path_safe_in_vault(&p_old) || !is_path_safe_in_vault(&p_new) {
+        return Err("Permission denied: Cannot rename items outside CADFlow storage vaults.".into());
+    }
+    std::fs::rename(&p_old, &p_new).map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
 async fn delete_virtual_item(file_path: String) -> Result<(), String> {
     let p = std::path::PathBuf::from(&file_path);
+    if !is_path_safe_in_vault(&p) {
+        return Err("Permission denied: Cannot delete items outside CADFlow storage vaults.".into());
+    }
     if p.is_dir() {
         std::fs::remove_dir_all(&p).map_err(|e| e.to_string())?;
     } else if p.is_file() {

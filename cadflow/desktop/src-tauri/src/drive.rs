@@ -8,7 +8,12 @@ use std::os::windows::process::CommandExt;
 pub fn mount_virtual_drive(cache_path: &Path) -> Result<(), String> {
     let path_str = cache_path.to_str().ok_or("Invalid path encoding for cache_path")?;
     
-    // Unmount first in case it's already mounted (ignore failure if it's not)
+    // If X:\ is already mounted and active, avoid re-running subst
+    if Path::new("X:\\Project").exists() {
+        return Ok(());
+    }
+
+    // Unmount first in case it was a stale mount
     let _ = unmount_virtual_drive();
 
     let output = Command::new("subst")
@@ -19,7 +24,7 @@ pub fn mount_virtual_drive(cache_path: &Path) -> Result<(), String> {
         .output()
         .map_err(|e| format!("Failed to execute subst command: {}", e))?;
 
-    if output.status.success() {
+    if output.status.success() || Path::new("X:\\").exists() {
         Ok(())
     } else {
         let err_msg = String::from_utf8_lossy(&output.stderr);

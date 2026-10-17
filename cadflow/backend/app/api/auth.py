@@ -30,8 +30,17 @@ async def auth_callback(req: Request):
         raise HTTPException(status_code=400, detail="Missing access token")
         
     try:
-        # Decode without verification for this MVP example (in prod use PyJWT with JWKS)
-        decoded = jwt.decode(token, options={"verify_signature": False})
+        import os
+        jwt_secret = os.getenv("ENTRA_JWT_SECRET")
+        if jwt_secret:
+            decoded = jwt.decode(token, jwt_secret, algorithms=["RS256", "HS256"], options={"verify_signature": True})
+        else:
+            # In development fallback only, warn explicitly
+            if os.getenv("ENV") == "production":
+                raise HTTPException(status_code=401, detail="Production Security: Token verification secret is not configured.")
+            decoded = jwt.decode(token, options={"verify_signature": False})
+            logger.warning("[SECURITY WARNING] JWT decoded without signature verification in non-production mode.")
+            
         tid = decoded.get("tid")
         
         if not tid:
