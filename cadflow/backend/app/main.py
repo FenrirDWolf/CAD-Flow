@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 
-from app.api import auth, locks, storage, bcf, sync, links, workflows, entra_sync
+from app.api import auth, locks, storage, bcf, sync, links, workflows, entra_sync, revit_lifecycle
 from app.services.reaper import start_reaper_scheduler
 
 logging.basicConfig(level=logging.INFO)
@@ -38,6 +38,7 @@ app.include_router(sync.router)
 app.include_router(links.router)
 app.include_router(workflows.router)
 app.include_router(entra_sync.router)
+app.include_router(revit_lifecycle.router)
 
 @app.get("/health")
 async def health_check():
